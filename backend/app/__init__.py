@@ -1,5 +1,9 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # ⬅️ Load from .env
 
 db = SQLAlchemy()
 
@@ -8,7 +12,7 @@ def create_app():
     app = Flask(__name__)
 
     # ✅ Your MySQL config
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://flaskuser:Test123$67@touch.synology.me:3307/flaskdb'
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # 🔌 Initialize DB
