@@ -57,7 +57,7 @@ class Visit(db.Model):
             "Resolved": self.Resolved
         }
 
-    def __init__(self, SalesName, ClientId, Activity, Notes, ProblemNotes=None, Resolved=None, VisitDateTime=None):
+    def __init__(self, SalesName, ClientId, Activity, Notes=None, ProblemNotes=None, Resolved=None, VisitDateTime=None):
         self.SalesName = SalesName
         self.ClientId = ClientId
         self.Activity = Activity
