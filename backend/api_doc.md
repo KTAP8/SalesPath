@@ -3,7 +3,7 @@
 ## 📍 Base URL
 
 ```
-http://localhost:5000
+http://your_ip:5000 -> get the ip when "python run.py"
 ```
 
 ---
