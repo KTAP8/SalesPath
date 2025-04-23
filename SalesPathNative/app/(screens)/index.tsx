@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { View, Text, FlatList } from "react-native";
+import { Text, FlatList, StyleSheet } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";
+import LayoutWithSidebar from "@/components/LayoutWithSidebar";
 
 export default function SalesmenScreen() {
   const [salesmen, setSalesmen] = useState<SalesMan[]>([]);
@@ -13,7 +14,7 @@ export default function SalesmenScreen() {
     axios
       .get(`${API_URL}/api/salesmen`)
       .then((res) => {
-        console.log("✅ Full API Response:", res.data); // <- log full data here
+        console.log("✅ Full API Response:", res.data);
         setSalesmen(res.data);
       })
       .catch((err) => {
@@ -22,15 +23,29 @@ export default function SalesmenScreen() {
   }, []);
 
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 24, marginBottom: 10 }}>Salesmen</Text>
+    <LayoutWithSidebar>
+      <Text style={styles.header}>Salesmen</Text>
       <FlatList
         data={salesmen}
         keyExtractor={(item) => item.SalesName}
         renderItem={({ item }) => (
-          <Text style={{ fontSize: 18 }}>{item.SalesName}</Text>
+          <Text style={styles.salesman}>{item.SalesName}</Text>
         )}
       />
-    </View>
+    </LayoutWithSidebar>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    fontSize: 24,
+    marginBottom: 10,
+    color: "#0b1c3e",
+    fontWeight: "bold",
+  },
+  salesman: {
+    fontSize: 18,
+    marginBottom: 6,
+    color: "#333",
+  },
+});
