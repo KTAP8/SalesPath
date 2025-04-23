@@ -12,7 +12,7 @@ This is a fullstack mobile application that combines:
 
 ```
 my-fullstack-project/
-├── mobile/         # Expo React Native frontend
+├── SalesPathNative/         # Expo React Native frontend
 ├── backend/        # Flask backend with SQLAlchemy
 │   ├── app/        # Routes and app logic
 │   ├── run.py      # Entry point
