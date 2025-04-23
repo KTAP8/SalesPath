@@ -1,103 +1,106 @@
-# 🧪 Fullstack App: Next.js + Flask + MySQL
+# 📱 Fullstack App: Expo React Native + Flask + MySQL
 
-This is a fullstack web application that combines:
+This is a fullstack mobile application that combines:
 
-- Next.js (React framework) for the frontend
-- Flask (Python microframework) for the backend API
-- MySQL for persistent data storage
+- **Expo React Native** for the frontend (iOS/Android)
+- **Flask** (Python microframework) for the backend API
+- **MySQL** for persistent data storage
 
 ---
 
 ## 📁 Project Structure
 
+```
 my-fullstack-project/
-├── frontend/      # Next.js frontend (TypeScript)
-├── backend/       # Flask backend with SQLAlchemy
-│   ├── app/       # Routes and app logic
-│   ├── run.py     # Entry point
-│   └── .env       # (NOT COMMITTED) contains DB credentials
+├── mobile/         # Expo React Native frontend
+├── backend/        # Flask backend with SQLAlchemy
+│   ├── app/        # Routes and app logic
+│   ├── run.py      # Entry point
+│   └── .env        # (NOT COMMITTED) contains DB credentials
 ├── README.md
 └── .gitignore
+```
 
 ---
 
 ## ⚙️ Technologies Used
 
-Frontend:
-- Next.js
+**Frontend (Mobile)**:
+- Expo (React Native)
 - TypeScript
-- React Hooks (useEffect, useState)
-- Tailwind CSS (optional)
+- Axios or Fetch API
+- React Navigation
 
-Backend:
+**Backend:**
 - Flask
 - Flask SQLAlchemy
 - PyMySQL
 - MySQL database
+- flask-cors
 
 ---
 
 ## 🚀 Getting Started
 
 ### 1. Clone the Repo
-
+```bash
 git clone https://github.com/your-username/your-repo-name.git
 cd your-repo-name
+```
 
 ---
 
 ### 2. Setup the Backend (Flask)
-
+```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # (Use venv\Scripts\activate on Windows)
 pip install -r requirements.txt
-
-Start the backend server:
-
 python run.py
-
-> It will run on http://<yourIP>:5000/ --> look in terminal when running
+```
+> It will run on `http://<yourIP>:5000/` (check terminal)
 
 ---
 
-### 3. Setup the Frontend (Next.js)
-
-cd frontend
+### 3. Setup the Frontend (Expo)
+```bash
+cd SalesPathNative
 npm install
-npm run dev
-
-> It will run on http://localhost:3000/
-
-Frontend will fetch from the backend via API:
-
-fetch(`http://<yourIP>:5000//api/hello`) -> same as in backend
+npm start  # or 'expo start'
+```
+> Make sure your Flask API is accessible from mobile devices — use LAN IP (e.g., `192.168.x.x:5000`) in `app.json`:
+```json
+"extra": {
+  "API_URL": "http://192.168.1.10:5000"
+}
+```
 
 ---
 
 ## 🌍 Deployment
 
-- Deploy frontend to Vercel or Netlify.
-- Deploy backend to Railway, Render, or your own server (e.g., Synology NAS).
-- Store secrets using .env files or GitHub Secrets.
-- Don’t forget to update CORS settings if frontend and backend are on different domains.
+- Deploy backend to Railway, Render, or self-hosted server (e.g., Synology NAS)
+- For Expo frontend, use Expo Go for testing or build standalone apps using EAS
+- Store secrets in `.env` and `app.json` securely
+- Enable CORS in Flask to allow mobile access
 
 ---
 
 ## 🔐 Security
 
-- Secrets and credentials should never be committed.
-- `.env`, `venv/`, `node_modules/`, etc. are excluded via `.gitignore`.
-- GitHub will warn you if secrets are exposed — rotate immediately.
+- Do **not** commit credentials or `.env` files
+- Add `.env`, `venv/`, `node_modules/`, etc. to `.gitignore`
+- Rotate credentials if GitHub flags exposure
 
 ---
 
 ## 🧠 Future Improvements
 
 - JWT-based authentication
-- Production-ready database config
-- Dockerization with `docker-compose`
+- Push notifications (Expo + Firebase)
+- Advanced filtering and search
 - API docs using Swagger or Postman
+- Dockerization for backend
 
 ---
 
@@ -108,3 +111,4 @@ If you have questions or want to contribute, feel free to open an issue or pull 
 ---
 
 © 2025 Your Name – All rights reserved
+
