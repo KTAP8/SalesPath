@@ -11,6 +11,7 @@ import {
 } from "lucide-react-native";
 import { TABS } from "@/constants/Tabs";
 import { useRouter, usePathname } from "expo-router";
+import { Colors } from "@/constants/Colors";
 
 const Sidebar = () => {
   const router = useRouter();
@@ -106,7 +107,11 @@ const MenuItem = ({
     onPress={onPress}
     style={[styles.menuItem, active && styles.activeMenuItem]}
   >
-    <Icon color="#3fd47c" size={20} style={styles.icon} />
+    <Icon
+      color={active ? Colors.white : Colors.primaryGreen}
+      size={15}
+      style={active ? styles.iconActive : styles.icon}
+    />
     <Text style={styles.menuLabel}>{label}</Text>
   </Pressable>
 );
@@ -114,20 +119,20 @@ const MenuItem = ({
 const styles = StyleSheet.create({
   sidebar: {
     width: 260,
-    backgroundColor: "#0b1c3e",
+    backgroundColor: Colors.primaryBlue,
     padding: 20,
     justifyContent: "space-between",
   },
   username: {
     fontSize: 18,
-    color: "#fff",
+    color: Colors.white,
     fontWeight: "bold",
     marginBottom: 12,
     textAlign: "center",
   },
   divider: {
     height: 1,
-    backgroundColor: "#fff",
+    backgroundColor: Colors.white,
     marginVertical: 8,
   },
   section: {
@@ -135,7 +140,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 12,
-    color: "#fff",
+    color: Colors.white,
     marginBottom: 8,
     fontWeight: "bold",
   },
@@ -148,14 +153,23 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   activeMenuItem: {
-    backgroundColor: "#1b2b4e",
+    backgroundColor: Colors.lightBlue,
   },
   menuLabel: {
-    color: "#fff",
+    color: Colors.white,
     fontSize: 14,
   },
   icon: {
     marginRight: 10,
+    backgroundColor: Colors.lightBlue,
+    padding: 10,
+    borderRadius: 10,
+  },
+  iconActive: {
+    marginRight: 10,
+    backgroundColor: Colors.primaryGreen,
+    padding: 10,
+    borderRadius: 10,
   },
   footer: {
     alignItems: "center",
