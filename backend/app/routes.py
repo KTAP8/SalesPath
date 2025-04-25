@@ -257,7 +257,9 @@ def get_salesman_revenue():
         # Base query: Join Visit, Invoice, and Client
         query = db.session.query(
             Visit.SalesName,
-            func.sum(Invoice.Amount).label("TotalRevenue")
+            func.sum(Invoice.Amount).label("TotalRevenue"),
+            func.count(func.distinct(Visit.ClientId)).label(
+                "ClientSoldCount")  # ✅ new line
         ).join(
             Invoice,
             and_(
@@ -270,13 +272,11 @@ def get_salesman_revenue():
             Visit.Activity == "Sale"
         )
 
-        # Optional date filters
+        # Optional filters
         if from_date:
             query = query.filter(Visit.VisitDateTime >= from_date)
         if to_date:
             query = query.filter(Visit.VisitDateTime <= to_date)
-
-        # Optional region filter
         if region:
             query = query.filter(Client.ClientReg == region)
 
@@ -286,8 +286,12 @@ def get_salesman_revenue():
         results = query.all()
 
         return jsonify([
-            {"SalesName": name, "TotalRevenue": float(revenue)}
-            for name, revenue in results
+            {
+                "SalesName": name,
+                "TotalRevenue": float(revenue),
+                "ClientSoldCount": client_count
+            }
+            for name, revenue, client_count in results
         ])
 
     except Exception as e:
