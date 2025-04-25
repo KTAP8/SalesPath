@@ -1,188 +1,154 @@
-# 🧾 SalesPath API Handbook
+# 📊 SalesPath API Documentation
 
-## 📍 Base URL
-
-```
-http://your_ip:5000 -> get the ip when "python run.py"
-```
+This document provides an overview of the RESTful APIs exposed by the SalesPath backend (Flask + SQLAlchemy), for managing sales activities, client tracking, revenue analysis, and prospect logging.
 
 ---
 
-## 🔌 Test Connection
+## ⚖️ General
 
 ### `GET /`
 
-Test database connectivity.
+**Test database connection**
 
-**Response:**
-
-- `✅ Connected to MySQL successfully!`
-- or error message if DB fails
+- Response: ✅ Connected or ❌ Failed message
 
 ---
 
-## 👤 Salesmen
+## 💼 Salesman
 
 ### `GET /api/salesmen`
 
-Returns all salesmen.
+**Get all salesmen**
 
-**Response:**
-
-```json
-[{ "SalesName": "Alice" }, { "SalesName": "Bob" }]
-```
+- Returns: List of salesmen with basic info
 
 ---
 
-## 🧾 Clients
+## 📈 Client
 
 ### `GET /api/clients`
 
-Returns all clients.
+**Get all clients**
 
-**Response:**
+- Returns: List of clients
 
-```json
-[
-  {
-    "ClientId": "CL001",
-    "ClientReg": "Bangkok",
-    "ClientSubReg": "Pathumwan",
-    "ClientType": "Retail",
-    "SalesName": "Alice"
-  },
-  ...
-]
-```
+### `GET /api/clients-per-salesman`
+
+**Get total and visited clients per salesman (optional date range)**
+
+- Query Params:
+  - `from`: Start datetime
+  - `to`: End datetime
+- Returns: List of salesmen with `TotalClients` and `VisitedClients`
 
 ---
 
-## 📅 Visits
+## 📆 Visits
 
 ### `GET /api/visits`
 
-Returns all visits, with optional filters and invoice matching.
+**Fetch visits with optional filters and revenue data**
 
-**Query Parameters (optional):**
-
-- `from`: ISO date (e.g. `2024-01-01`)
-- `to`: ISO date (e.g. `2024-12-31`)
-- `sales`: SalesName to filter by
-- `region`: Client region
-
-**Response:**
-
-```json
-[
-  {
-    "VisitId": 1,
-    "SalesName": "Alice",
-    "ClientId": "CL001",
-    "VisitDateTime": "2024-04-18T10:00:00",
-    "Activity": "Sale",
-    "Notes": "Followed up with client",
-    "ProblemNotes": null,
-    "Resolved": true,
-    "InvoiceAmount": 5000.00
-  },
-  ...
-]
-```
-
----
+- Query Params (all optional):
+  - `from`: Start datetime
+  - `to`: End datetime
+  - `sales`: Filter by SalesName
+  - `region`: Filter by ClientReg
+  - `activity`: Filter by Visit.Activity (e.g., "Sale", "Problem")
+  - `resolved`: 0 or 1 (filter resolved status)
+- Returns: List of visits with associated invoice revenue
 
 ### `POST /api/visits`
 
-Create a new visit record.
+**Create a new visit record**
 
-**Request Body:**
+- Body:
 
 ```json
 {
-  "SalesName": "Alice",
+  "SalesName": "Alex",
   "ClientId": "CL001",
   "Activity": "Problem",
-  "Notes": "Issue reported",
-  "ProblemNotes": "Incorrect delivery",
-  "Resolved": false
+  "Notes": "Note here",
+  "ProblemNotes": "Issue observed",
+  "Resolved": 0,
+  "VisitDateTime": "2024-04-22T10:00:00"
 }
 ```
 
-**Optional field:** `VisitDateTime` (ISO format)
+- Returns: Created visit object
 
-**Response:**
+### `PUT /api/visit/<visit_id>/resolve`
+
+**Update resolved status of a specific visit**
+
+- Body:
 
 ```json
-{
-  "message": "Visit created successfully",
-  "visit": {
-    "VisitId": 2,
-    ...
-  }
-}
+{ "Resolved": 1 }
 ```
+
+- Returns: Confirmation message with updated resolved status
 
 ---
 
-## 🔍 Prospects
+## 💰 Revenue
+
+### `GET /api/revenue`
+
+**Get total revenue per salesman in a time range**
+
+- Query Params:
+  - `from`, `to`: Date range
+  - `region`: Optional region filter
+- Returns: List of `{ SalesName, TotalRevenue }`
+
+---
+
+## 📅 Prospects
 
 ### `GET /api/prospects`
 
-Returns all prospects with optional filters.
+**Get prospects with optional filters**
 
-**Query Parameters (optional):**
-
-- `sales`: SalesName
-- `region`: ProspectReg
-
-**Response:**
-
-```json
-[
-  {
-    "ProspectId": 1,
-    "ProspectReg": "Bangkok",
-    "ProspectSubReg": "Pathumwan",
-    "SalesName": "Alice"
-  }
-]
-```
-
----
+- Query Params:
+  - `sales`: SalesName
+  - `region`: ProspectReg
+- Returns: List of prospects
 
 ### `POST /api/prospects`
 
-Create a new prospect.
+**Add a new prospect**
 
-**Request Body:**
-
-```json
-{
-  "ProspectReg": "Bangkok",
-  "ProspectSubReg": "Pathumwan",
-  "SalesName": "Alice"
-}
-```
-
-**Response:**
+- Body:
 
 ```json
 {
-  "message": "Prospect created successfully",
-  "prospect": {
-    "ProspectId": 1,
-    ...
-  }
+  "ProspectReg": "Chiang Mai",
+  "ProspectSubReg": "Hang Dong",
+  "SalesName": "Joe"
 }
 ```
+
+- Returns: Created prospect object
 
 ---
 
-## 🧪 Sample Error Response
+## ⚡ Problem Reports
 
-```json
-{
-  "error": "Missing required fields"
-}
-```
+### `GET /api/problems`
+
+**Fetch visits with Activity = "Problem"**
+
+- Optional Filters:
+  - `sales`: SalesName
+  - `region`: ClientReg
+  - `from`: Start datetime
+  - `to`: End datetime
+- Returns: List of problem-related visits with:
+  - ClientId
+  - ClientReg
+  - ClientSubReg
+  - ClientType
+  - VisitDateTime
+  - ProblemNotes
