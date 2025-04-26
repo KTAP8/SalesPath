@@ -57,12 +57,15 @@ def get_filtered_visits():
         activity = request.args.get('activity')
         resolved = request.args.get('resolved')  # 0 or 1
 
-        # Base query: Visit joined with Client
+        # Base query: Visit JOIN Client
         query = db.session.query(
             Visit,
+            Client.ClientReg,
+            Client.ClientType,
             Invoice.Amount.label("InvoiceAmount")
-        ).join(Client, Visit.ClientId == Client.ClientId
-               ).outerjoin(
+        ).join(
+            Client, Visit.ClientId == Client.ClientId
+        ).outerjoin(
             Invoice,
             and_(
                 Visit.ClientId == Invoice.ClientId,
@@ -83,8 +86,7 @@ def get_filtered_visits():
             filters.append(Visit.Activity == activity)
         if resolved is not None:
             try:
-                filters.append(Visit.Resolved == int(
-                    resolved))  # ✅ safely cast
+                filters.append(Visit.Resolved == int(resolved))
             except ValueError:
                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
 
@@ -93,10 +95,12 @@ def get_filtered_visits():
 
         results = query.all()
 
-        # Format output
+        # ✅ Format output
         response = []
-        for visit, amount in results:
+        for visit, client_reg, client_type, amount in results:
             visit_data = visit.to_dict()
+            visit_data["ClientReg"] = client_reg
+            visit_data["ClientType"] = client_type
             visit_data["InvoiceAmount"] = float(amount) if amount else None
             response.append(visit_data)
 

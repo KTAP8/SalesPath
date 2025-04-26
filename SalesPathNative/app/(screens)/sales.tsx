@@ -13,6 +13,9 @@ import Constants from "expo-constants";
 import LayoutWithSidebar from "@/components/LayoutWithSidebar";
 import Dropdown from "@/components/dropdown";
 import DatePickerInput from "@/components/DatePicker";
+import Button from "@/components/Button";
+import { Colors } from "@/constants/Colors";
+import TableReport from "@/components/TableReport";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -27,6 +30,31 @@ export default function SalesmanReportScreen() {
   const [toDate, setToDate] = useState<string>("");
 
   const [reportData, setReportData] = useState<any[]>([]);
+  const [wasToDateManuallySet, setWasToDateManuallySet] = useState(false);
+  const handleSetToDate = (val: string) => {
+    setToDate(val);
+    setWasToDateManuallySet(true); // 🛡️ Mark that user edited it manually
+  };
+
+  const tableHead = [
+    "Client ID",
+    "Region",
+    "Type",
+    "Date Visited",
+    "Activity",
+    "Revenue",
+    "Notes",
+  ];
+
+  const tableData = reportData.map((item) => [
+    item.ClientId,
+    item.ClientReg,
+    item.ClientType,
+    item.VisitDateTime?.split("T")[0],
+    item.Activity,
+    item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
+    item.Notes,
+  ]);
 
   // Load options (salesmen and regions)
   useEffect(() => {
@@ -64,7 +92,7 @@ export default function SalesmanReportScreen() {
 
   return (
     <LayoutWithSidebar>
-      <ScrollView style={styles.container}>
+      <View style={styles.container}>
         <Text style={styles.title}>Salesman Report</Text>
 
         {/* Filters */}
@@ -82,79 +110,63 @@ export default function SalesmanReportScreen() {
             setSelected={setSelectedRegion}
             disabled={!selectedSalesman} // ✅
           />
-          <View style={{ zIndex: 999, flex: 1, flexDirection: "row", gap: 10 }}>
-            <DatePickerInput
-              label="From"
-              value={fromDate}
-              setValue={setFromDate}
-            />
+          <DatePickerInput
+            label="From"
+            value={fromDate}
+            setValue={setFromDate}
+            setToDate={(newToDate) => {
+              if (!wasToDateManuallySet) {
+                setToDate(newToDate);
+              }
+            }}
+          />
 
-            <DatePickerInput label="To" value={toDate} setValue={setToDate} />
-          </View>
-
-          <Pressable style={styles.searchButton} onPress={handleSearch}>
-            <Text style={styles.searchButtonText}>Search</Text>
-          </Pressable>
+          <DatePickerInput
+            label="To"
+            value={toDate}
+            setValue={handleSetToDate}
+          />
+          <Button label="Search" onPress={handleSearch} size="S"></Button>
         </View>
 
         {/* Report Table */}
-        <FlatList
-          data={reportData}
-          keyExtractor={(item) => item.VisitId.toString()}
-          renderItem={({ item }) => (
-            <View style={styles.row}>
-              <Text style={styles.cell}>{item.ClientId}</Text>
-              <Text style={styles.cell}>{item.ClientReg}</Text>
-              <Text style={styles.cell}>{item.ClientType}</Text>
-              <Text style={styles.cell}>
-                {item.VisitDateTime?.split("T")[0]}
-              </Text>
-              <Text style={styles.cell}>{item.Activity}</Text>
-              <Text style={styles.cell}>
-                {item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-"}
-              </Text>
-              <Text style={styles.cell}>{item.Notes}</Text>
-            </View>
-          )}
-          ListEmptyComponent={
-            <Text style={{ marginTop: 20, textAlign: "center" }}>
-              No data. Use the filter and press Search.
-            </Text>
-          }
-        />
-      </ScrollView>
+        <View style={{ marginTop: 20 }}>
+          <ScrollView style={styles.tableScrollView}>
+            <TableReport headers={tableHead} data={tableData} />
+          </ScrollView>
+        </View>
+      </View>
     </LayoutWithSidebar>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: "#e8eeee" },
+  container: { paddingHorizontal: 20, backgroundColor: Colors.background },
   title: {
-    fontSize: 26,
+    fontSize: 35,
     fontWeight: "bold",
-    marginBottom: 20,
-    color: "#0b1c3e",
+    marginBottom: 13,
+    color: Colors.primaryBlue,
+    fontFamily: "Lexend",
   },
-  filters: { marginBottom: 20 },
-  searchButton: {
-    backgroundColor: "#3fd47c",
-    padding: 10,
+  tableScrollView: {
+    maxHeight: 500,
+    borderWidth: 1,
+    borderColor: Colors.grey,
     borderRadius: 8,
-    marginTop: 10,
+    backgroundColor: Colors.white,
   },
-  searchButtonText: { textAlign: "center", color: "#fff", fontWeight: "bold" },
-  row: {
+  filters: {
+    marginBottom: 20,
+    flex: 1,
     flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 12,
-    borderBottomWidth: 1,
-    borderColor: "#ccc",
-    paddingBottom: 8,
+    gap: 40,
+    alignItems: "center",
+    zIndex: 1000,
   },
-  cell: { width: "40%", marginBottom: 5 },
   dropdown: {
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: Colors.grey,
     borderRadius: 8,
     padding: 5,
     marginTop: 4,

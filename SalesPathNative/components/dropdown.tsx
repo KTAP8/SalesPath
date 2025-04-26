@@ -1,5 +1,14 @@
-import RNPickerSelect from "react-native-picker-select";
-import { View, Text } from "react-native";
+import {
+  Platform,
+  Text,
+  View,
+  TextInput,
+  Pressable,
+  StyleSheet,
+} from "react-native";
+import { useState } from "react";
+import { Colors } from "@/constants/Colors";
+
 const Dropdown = ({
   label,
   options,
@@ -12,36 +21,108 @@ const Dropdown = ({
   selected?: string;
   setSelected: (val: string) => void;
   disabled?: boolean;
-}) => (
-  <View style={{ marginBottom: 15 }}>
-    <Text style={{ marginBottom: 5 }}>{label}</Text>
-    <RNPickerSelect
-      onValueChange={(value) => setSelected(value)}
-      items={options.map((opt) => ({ label: opt, value: opt }))}
-      value={selected}
-      placeholder={{
-        label: disabled ? `Select salesman first` : `Select ${label}`,
-        value: undefined,
-      }}
-      disabled={disabled}
-      style={{
-        inputIOS: {
-          padding: 12,
-          borderWidth: 1,
-          borderColor: "#ccc",
-          borderRadius: 8,
-          backgroundColor: disabled ? "#eee" : "#fff",
-        },
-        inputAndroid: {
-          padding: 12,
-          borderWidth: 1,
-          borderColor: "#ccc",
-          borderRadius: 8,
-          backgroundColor: disabled ? "#eee" : "#fff",
-        },
-      }}
-    />
-  </View>
-);
+}) => {
+  const [showOptions, setShowOptions] = useState(false);
+
+  if (Platform.OS === "web") {
+    return (
+      <View style={styles.wrapper}>
+        <Text style={styles.label}>{label}</Text>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          disabled={disabled}
+          style={
+            disabled
+              ? { ...styles.webSelect, backgroundColor: Colors.white }
+              : styles.webSelect
+          }
+        >
+          <option value="">
+            {disabled ? "Select salesman first" : `Select ${label}`}
+          </option>
+          {options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </View>
+    );
+  }
+
+  // Mobile Version
+  return (
+    <View style={styles.wrapper}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable
+        style={[styles.input, disabled && styles.disabledInput]}
+        onPress={() => !disabled && setShowOptions(!showOptions)}
+      >
+        <Text>
+          {selected || (disabled ? "Select salesman first" : `Select ${label}`)}
+        </Text>
+      </Pressable>
+
+      {showOptions &&
+        !disabled &&
+        options.map((opt) => (
+          <Pressable
+            key={opt}
+            onPress={() => {
+              setSelected(opt);
+              setShowOptions(false);
+            }}
+            style={styles.option}
+          >
+            <Text>{opt}</Text>
+          </Pressable>
+        ))}
+    </View>
+  );
+};
 
 export default Dropdown;
+
+const styles = StyleSheet.create({
+  wrapper: {
+    // marginBottom: 15,
+  },
+  label: {
+    marginBottom: 5,
+    fontSize: 14,
+    // fontWeight: "600",
+    color: Colors.primaryBlue,
+    fontFamily: "Lexend",
+  },
+  input: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: Colors.grey,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    fontSize: 16,
+    fontFamily: "Lexend",
+  },
+  disabledInput: {
+    backgroundColor: "#eee",
+  },
+  webSelect: {
+    width: "100%",
+    padding: 12,
+    borderWidth: 1,
+    borderColor: Colors.grey,
+    borderRadius: 8,
+    fontSize: 13,
+    fontFamily: "Lexend",
+    backgroundColor: Colors.white,
+    // paddingRight: 30,
+  },
+  option: {
+    padding: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+});
