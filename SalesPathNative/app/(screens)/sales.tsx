@@ -50,7 +50,9 @@ export default function SalesmanReportScreen() {
     item.ClientId,
     item.ClientReg,
     item.ClientType,
-    item.VisitDateTime?.split("T")[0],
+    item.VisitDateTime
+      ? new Date(item.VisitDateTime).toLocaleString("en-GB")
+      : "",
     item.Activity,
     item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
     item.Notes,
@@ -88,6 +90,8 @@ export default function SalesmanReportScreen() {
       .get(`${API_URL}/api/visits?${params.toString()}`)
       .then((res) => setReportData(res.data))
       .catch((err) => console.error("Visit search error:", err));
+
+    console.log(params.toString());
   };
 
   return (
