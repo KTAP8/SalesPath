@@ -41,6 +41,7 @@ export default function SalesmanReportScreen() {
     "Region",
     "Type",
     "Date Visited",
+    "Sales Name",
     "Activity",
     "Revenue",
     "Notes",
@@ -53,6 +54,7 @@ export default function SalesmanReportScreen() {
     item.VisitDateTime
       ? new Date(item.VisitDateTime).toLocaleString("en-GB")
       : "",
+    item.SalesName,
     item.Activity,
     item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
     item.Notes,
