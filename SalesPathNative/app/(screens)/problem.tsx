@@ -21,6 +21,7 @@ type VisitRecord = {
   VisitId: number;
   ProblemNotes: string;
   Resolved: number; // ⚡ Force it to be number (not string!)
+  SalesName: string;
 };
 
 export default function ProblemReportScreen() {
@@ -45,6 +46,7 @@ export default function ProblemReportScreen() {
     "Region",
     "Type",
     "Date Visited",
+    "Sales Name",
     "Visit ID",
     "Problem",
     "Solved?",
@@ -57,6 +59,7 @@ export default function ProblemReportScreen() {
     item.VisitDateTime
       ? new Date(item.VisitDateTime).toLocaleString("en-GB")
       : "",
+    item.SalesName,
     item.VisitId,
     item.ProblemNotes || "-",
     <View style={{ alignItems: "center", justifyContent: "center" }}>
