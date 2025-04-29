@@ -2,6 +2,7 @@
 import { View, StyleSheet } from "react-native";
 import Sidebar from "./SideBar";
 import { ReactNode } from "react";
+import { Colors } from "@/constants/Colors";
 
 export default function LayoutWithSidebar({
   children,
@@ -23,7 +24,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    backgroundColor: "#e8eeee",
+    backgroundColor: Colors.background,
     padding: 20,
   },
 });

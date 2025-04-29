@@ -84,7 +84,7 @@ const sum = (arr: number[]) => arr.reduce((acc, curr) => acc + curr, 0);
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#e8eeee",
+    backgroundColor: Colors.background,
     paddingHorizontal: 20,
     // paddingTop: 30,
     // gap: 20,
