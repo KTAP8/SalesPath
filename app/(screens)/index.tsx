@@ -10,6 +10,7 @@ import Dropdown from "@/components/dropdown";
 import CustomCheckbox from "@/components/CustomCheckBox";
 import CustomSwitch from "@/components/CustomSwitch";
 import FilterTextInput from "@/components/FilterTextInput";
+import {Colors} from "@/constants/Colors";
 
 export default function SalesmenScreen() {
   const [salesmen, setSalesmen] = useState<SalesMan[]>([]);
@@ -22,7 +23,7 @@ export default function SalesmenScreen() {
   const [custRelation, setCustRelation] = useState(false);
   const [probReport, setProbReport] = useState(false);
   const [prosCustomer, setProsCustomer] = useState(false);
-
+  const [clients, setClients] = useState<string[]>([]);
 
   const API_URL =
     Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
@@ -35,9 +36,43 @@ export default function SalesmenScreen() {
         setSalesmen(res.data);
       })
       .catch((err) => {
-        console.error("❌ API Fetch Error:", err);
+        console.error("❌ Salesmen API Fetch Error:", err);
       });
   }, []);
+
+  useEffect(()=> {
+      axios
+        .get(`${API_URL}/api/clients?sales=${selectedSalesman}`)
+        .then((res) => {
+          const clients = res.data;
+          const newClients = [];
+          {for(let x in clients){
+            if(clients[x].SalesMan = selectedSalesman){
+              newClients.push(clients[x].ClientId)
+            }
+          }}
+
+          setClients(newClients);
+          console.log(clients);
+          console.log('New Clients: ' + newClients);
+        })
+        .catch((err) => console.error("Client regions error:", err));
+    }
+  , [selectedSalesman]);
+
+  const handleExistingToggle = (newValue: boolean) => {
+    setCheckExisting(newValue);
+    if (newValue) {
+      setCheckNew(false);
+    }
+  };
+  const handleNewToggle = (newValue: boolean) => {
+    setCheckNew(newValue);
+    if (newValue) {
+      setCheckExisting(false);
+    }
+  };
+
   return (
     <LayoutWithSidebar>
       <Text style={styles.header}>Salesmen</Text>
@@ -53,13 +88,13 @@ export default function SalesmenScreen() {
         <CustomCheckbox 
           label={"Existing Client"} 
           value={checkExisting} 
-          onValueChange= {setCheckExisting}
+          onValueChange= {handleExistingToggle}
         ></CustomCheckbox>
 
         <CustomCheckbox 
           label={"NewClient"} 
           value={checkNew} 
-          onValueChange= {setCheckNew}
+          onValueChange= {handleNewToggle}
         ></CustomCheckbox>
       </View>
 
@@ -67,41 +102,46 @@ export default function SalesmenScreen() {
         <View>
           <FilterTextInput
             label="Who are you?"
-            options={["Prahil", "Alex", "Joe", "John"]}
+            options={clients}
             selected={selectedSalesman}
             setSelected={setSelectedSalesman}
           />
 
-          <Text style = {styles.salesman}>What did you do?</Text>
+          <Text style = {styles.label}>What did you do?</Text>
 
-          <View style = {styles.checkBoxVertical}>
+          <View >
+            <View style = {styles.checkBoxVertical}>
+              <CustomCheckbox
+                label={"Sale"} 
+                value={sale} 
+                onValueChange= {setSale}
+              ></CustomCheckbox>
+            </View>
             
-            <CustomCheckbox
-              label={"Sale"} 
-              value={sale} 
-              onValueChange= {setSale}
-            />
+            <View style = {styles.checkBoxVertical}></View>
+              <CustomCheckbox
+                label={"Customer Relation"} 
+                value={custRelation} 
+                onValueChange= {setCustRelation}
+              ></CustomCheckbox>
+            </View>
 
-            <CustomCheckbox
-              label={"Customer Relation"} 
-              value={custRelation} 
-              onValueChange= {setCustRelation}
-            />
+            <View style = {styles.checkBoxVertical}>
+              <CustomCheckbox
+                label={"Problem Report"} 
+                value={probReport} 
+                onValueChange= {setProbReport}
+              ></CustomCheckbox>
+            </View>
 
-            <CustomCheckbox
-              label={"Problem Report"} 
-              value={probReport} 
-              onValueChange= {setProbReport}
-            />
+            <View style = {styles.checkBoxVertical}></View>
+              <CustomCheckbox
+                label={"Prospect Customer"} 
+                value={prosCustomer} 
+                onValueChange= {setProsCustomer}
+              ></CustomCheckbox>
+            </View>
 
-            <CustomCheckbox
-              label={"Prospect Customer"} 
-              value={prosCustomer} 
-              onValueChange= {setProsCustomer}
-            />
-          </View>
-
-        </View>
       ): checkExisting == false && checkNew == true ?(
         <View>
           <Text>New</Text>
@@ -142,5 +182,13 @@ const styles = StyleSheet.create({
     margin: 15,
     flex: 1,
     flexDirection: 'column',
+    justifyContent: 'space-evenly',
+  },
+  label: {
+    marginBottom: 5,
+    fontSize: 14,
+    // fontWeight: "600",
+    color: Colors.primaryBlue,
+    fontFamily: "Lexend",
   }
 });

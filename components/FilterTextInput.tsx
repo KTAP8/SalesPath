@@ -38,7 +38,7 @@ const FilterTextInput = ({
           styles.input,
           disabled && styles.disabledInput,
         ]}
-        placeholder={disabled ? "Select salesman first" : `Select ${label}`}
+        placeholder={disabled ? "Select salesman first" : `Select Client `}
         value={searchTerm}
         onChangeText={(text) => {
           setSearchTerm(text);
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.grey,
     borderRadius: 8,
     backgroundColor: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: "Lexend",
   },
   disabledInput: {
