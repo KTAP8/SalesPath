@@ -218,6 +218,7 @@ def create_prospect():
     try:
         data = request.get_json()
 
+        ProspectId = data.get("ProspectId")
         ProspectReg = data.get("ProspectReg")
         ProspectSubReg = data.get("ProspectSubReg")
         SalesName = data.get("SalesName")
@@ -231,6 +232,7 @@ def create_prospect():
             return jsonify({"error": f"SalesName '{SalesName}' does not exist"}), 404
 
         new_prospect = Prospect(
+            ProspectId=ProspectId,
             ProspectReg=ProspectReg,
             ProspectSubReg=ProspectSubReg,
             SalesName=SalesName
