@@ -23,7 +23,7 @@ const FilterTextInput = ({
   setSelected: (val: string) => void;
   disabled?: boolean;
 }) => {
-  const [searchTerm, setSearchTerm] = useState(selected || "");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showOptions, setShowOptions] = useState(false);
 
   const filteredOptions = options.filter((opt) =>
@@ -31,15 +31,16 @@ const FilterTextInput = ({
   );
 
   return (
-    <View style={styles.wrapper}>
+    
+    <View style={styles.wrapper} >
       <Text style={styles.label}>{label}</Text>
       <TextInput
         style={[
           styles.input,
           disabled && styles.disabledInput,
         ]}
-        placeholder={disabled ? "Select salesman first" : `Select Client `}
-        value={searchTerm}
+        placeholder={disabled ? "Select salesman first" : `Select Client`}
+        value= {searchTerm}
         onChangeText={(text) => {
           setSearchTerm(text);
           setShowOptions(true);
@@ -75,6 +76,7 @@ const FilterTextInput = ({
               </View>
             )}
           </ScrollView>
+          
         </View>
       )}
     </View>
