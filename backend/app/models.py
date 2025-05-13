@@ -3,6 +3,7 @@ from sqlalchemy.sql import func
 
 
 class SalesMan(db.Model):
+    __bind_key__ = 'mysql'
     __tablename__ = 'SalesMan'
 
     SalesName = db.Column(db.String(100), primary_key=True)
@@ -14,6 +15,7 @@ class SalesMan(db.Model):
 
 
 class Client(db.Model):
+    __bind_key__ = 'mysql'
     __tablename__ = 'Client'
 
     ClientId = db.Column(db.String(255), primary_key=True)
@@ -33,11 +35,13 @@ class Client(db.Model):
 
 
 class Visit(db.Model):
+    __bind_key__ = 'postgres'
     __tablename__ = 'Visit'
 
     VisitId = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    SalesName = db.Column(db.String(255), db.ForeignKey('SalesMan.SalesName'))
-    ClientId = db.Column(db.String(255), db.ForeignKey('Client.ClientId'))
+    # , db.ForeignKey('SalesMan.SalesName'))
+    SalesName = db.Column(db.String(255))
+    ClientId = db.Column(db.String(255))  # , db.ForeignKey('Client.ClientId'))
     VisitDateTime = db.Column(db.DateTime, default=func.now())
     Activity = db.Column(db.String(255))
     Notes = db.Column(db.String(10000))
@@ -73,6 +77,7 @@ class Visit(db.Model):
 
 
 class Invoice(db.Model):
+    __bind_key__ = 'mysql'
     __tablename__ = 'Invoice'
 
     InvoiceId = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -92,6 +97,7 @@ class Invoice(db.Model):
 
 
 class Prospect(db.Model):
+    __bind_key__ = 'mysql'
     __tablename__ = 'Prospect'
 
     ProspectId = db.Column(db.Integer, primary_key=True, autoincrement=True)

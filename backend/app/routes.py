@@ -1,3 +1,6 @@
+from .models import Visit, Client, Invoice
+from flask import request, jsonify
+from sqlalchemy import and_, func
 from .models import Prospect
 from flask import request
 from datetime import datetime
@@ -7,6 +10,8 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy import text, and_, func
 from . import db  # import from __init__.py
 from .models import SalesMan, Client, Visit, Invoice, Prospect
+from sqlalchemy.orm import Session
+from flask import current_app
 
 main = Blueprint("main", __name__)
 
@@ -16,10 +21,14 @@ main = Blueprint("main", __name__)
 @main.route('/')
 def test_connection():
     try:
-        db.session.execute(text('SELECT 1'))
-        return '✅ Connected to MySQL successfully!'
+        # Get the bound engine directly
+        engine = db.get_engine(app=None, bind='postgres')  # or 'mysql'
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+
+        return '✅ Connected to PostgreSQL successfully!'
     except Exception as e:
-        return f'❌ Failed to connect to MySQL: {str(e)}'
+        return f'❌ Failed to connect to db: {str(e)}'
 
 # get all salesman
 
@@ -47,9 +56,14 @@ def get_all_clients():
 
 # get all visits + revenue: filter by SalesName, Region, date range, Activity, Resolved
 
+
 @main.route('/api/visits', methods=['GET'])
-def get_filtered_visits():
+def get_filtered_visits_cross_db():
     try:
+        from flask import current_app
+        from sqlalchemy.orm import Session
+
+        # Step 1: Get filters from query params
         from_date = request.args.get('from')
         to_date = request.args.get('to')
         sales_name = request.args.get('sales')
@@ -57,52 +71,58 @@ def get_filtered_visits():
         activity = request.args.get('activity')
         resolved = request.args.get('resolved')  # 0 or 1
 
-        # Base query: Visit JOIN Client
-        query = db.session.query(
-            Visit,
-            Client.ClientReg,
-            Client.ClientType,
-            Invoice.Amount.label("InvoiceAmount")
-        ).join(
-            Client, Visit.ClientId == Client.ClientId
-        ).outerjoin(
-            Invoice,
-            and_(
-                Visit.ClientId == Invoice.ClientId,
-                func.date(Visit.VisitDateTime) == Invoice.TransactionDate
-            )
-        )
+        # Step 2: Create bind-specific sessions
+        pg_session = Session(db.get_engine(current_app, bind='postgres'))
+        mysql_session = Session(db.get_engine(current_app, bind='mysql'))
 
-        filters = []
+        # Step 3: Query Visit table (Postgres)
+        visit_query = pg_session.query(Visit)
         if from_date:
-            filters.append(Visit.VisitDateTime >= from_date)
+            visit_query = visit_query.filter(Visit.VisitDateTime >= from_date)
         if to_date:
-            filters.append(Visit.VisitDateTime <= to_date)
+            visit_query = visit_query.filter(Visit.VisitDateTime <= to_date)
         if sales_name:
-            filters.append(Visit.SalesName == sales_name)
-        if client_region:
-            filters.append(Client.ClientReg == client_region)
+            visit_query = visit_query.filter(Visit.SalesName == sales_name)
         if activity:
-            filters.append(Visit.Activity == activity)
+            visit_query = visit_query.filter(Visit.Activity == activity)
         if resolved is not None:
             try:
-                filters.append(Visit.Resolved == int(resolved))
+                visit_query = visit_query.filter(
+                    Visit.Resolved == bool(int(resolved)))
             except ValueError:
                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
 
-        if filters:
-            query = query.filter(and_(*filters))
+        visits = visit_query.all()
 
-        results = query.all()
+        # Step 4: Query Client and Invoice tables (MySQL)
+        clients = mysql_session.query(Client).all()
+        invoices = mysql_session.query(Invoice).all()
 
-        # ✅ Format output
+        client_map = {c.ClientId: c for c in clients}
+        invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
+
+        # Step 5: Combine data in memory
         response = []
-        for visit, client_reg, client_type, amount in results:
-            visit_data = visit.to_dict()
-            visit_data["ClientReg"] = client_reg
-            visit_data["ClientType"] = client_type
-            visit_data["InvoiceAmount"] = float(amount) if amount else None
+        for v in visits:
+            c = client_map.get(v.ClientId)
+            invoice = invoice_map.get(
+                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
+
+            visit_data = v.to_dict()
+            visit_data["ClientReg"] = c.ClientReg if c else None
+            visit_data["ClientType"] = c.ClientType if c else None
+            visit_data["InvoiceAmount"] = float(
+                invoice.Amount) if invoice else None
+
+            # Region filter after join
+            if client_region and visit_data["ClientReg"] != client_region:
+                continue
+
             response.append(visit_data)
+
+        # Cleanup
+        pg_session.close()
+        mysql_session.close()
 
         return jsonify(response)
 
@@ -145,10 +165,13 @@ def create_visit():
             VisitDateTime=VisitDateTime
         )
 
-        db.session.add(new_visit)
-        db.session.commit()
+        pg_session = Session(db.get_engine(current_app, bind='postgres'))
+        pg_session.add(new_visit)
+        pg_session.commit()
+        response = new_visit.to_dict()
+        pg_session.close()
 
-        return jsonify({"message": "Visit created successfully", "visit": new_visit.to_dict()}), 201
+        return jsonify({"message": "Visit created successfully", "visit": response}), 201
 
     except Exception as e:
         db.session.rollback()
@@ -160,30 +183,41 @@ def create_visit():
 @main.route('/api/visit/<int:visit_id>/resolve', methods=['PUT'])
 def update_resolved_status(visit_id):
     try:
-        data = request.get_json()
-        resolved = data.get("Resolved")
+        from sqlalchemy.orm import Session
+        from flask import current_app, request
 
-        # Validate the resolved field
-        if resolved not in [0, 1, "0", "1"]:
-            return jsonify({"error": "Resolved must be 0 or 1"}), 400
+        # print("➡️ Received PUT /api/visit with ID:", visit_id)
+        data = request.get_json(force=True, silent=True)
+        # print("📦 Payload:", data)
 
-        # Fetch the visit
-        visit = Visit.query.get(visit_id)
+        if not data or "Resolved" not in data:
+            return jsonify({"error": "Missing 'Resolved' in request body"}), 400
+
+        resolved = int(data["Resolved"])
+        # print("✅ Parsed resolved value:", resolved)
+
+        pg_session = Session(db.get_engine(current_app, bind='postgres'))
+        visit = pg_session.get(Visit, visit_id)
         if not visit:
+            pg_session.close()
             return jsonify({"error": f"Visit ID {visit_id} not found"}), 404
 
-        # Update and save
-        visit.Resolved = int(resolved)
-        db.session.commit()
+        visit.Resolved = resolved
+        pg_session.commit()
 
-        return jsonify({
-            "message": f"Visit ID {visit_id} resolved status updated to {resolved}",
+        # ✅ Access before closing session
+        response = {
+            "message": f"Visit ID {visit_id} resolved status updated.",
             "VisitId": visit.VisitId,
             "Resolved": visit.Resolved
-        })
+        }
+
+        pg_session.close()
+        return jsonify(response)
 
     except Exception as e:
-        db.session.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
