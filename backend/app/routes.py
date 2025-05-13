@@ -134,7 +134,12 @@ def get_filtered_visits_cross_db():
 @main.route('/api/visits', methods=['POST'])
 def create_visit():
     try:
+        from sqlalchemy.orm import Session
+        from flask import current_app
+        import traceback
+
         data = request.get_json()
+        print("📥 Received visit POST data:", data)
 
         SalesName = data.get("SalesName")
         ClientId = data.get("ClientId")
@@ -142,19 +147,25 @@ def create_visit():
         Notes = data.get("Notes")
         ProblemNotes = data.get("ProblemNotes")
         Resolved = data.get("Resolved")
+        visit_datetime_str = data.get("VisitDateTime")
 
-        # Validation: required fields
+        print(
+            f"🔍 Extracted: SalesName={SalesName}, ClientId={ClientId}, Activity={Activity}, Resolved={Resolved}")
+
+        # Validation
         if not all([SalesName, ClientId, Activity, Notes]):
+            print("❌ Missing required fields")
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Optional: VisitDateTime override
-        visit_datetime_str = data.get("VisitDateTime")
+        # Handle date
         if visit_datetime_str:
             VisitDateTime = datetime.fromisoformat(visit_datetime_str)
         else:
             VisitDateTime = datetime.now()
 
-        # Create Visit object
+        print(f"🕓 Using VisitDateTime: {VisitDateTime}")
+
+        # Create object
         new_visit = Visit(
             SalesName=SalesName,
             ClientId=ClientId,
@@ -165,16 +176,20 @@ def create_visit():
             VisitDateTime=VisitDateTime
         )
 
+        # PostgreSQL session
         pg_session = Session(db.get_engine(current_app, bind='postgres'))
+
+        print("💾 Adding visit to session...")
         pg_session.add(new_visit)
         pg_session.commit()
         response = new_visit.to_dict()
+        print("✅ Commit successful")
         pg_session.close()
 
         return jsonify({"message": "Visit created successfully", "visit": response}), 201
 
     except Exception as e:
-        db.session.rollback()
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 # Update the Resolved status (0 or 1) for a specific visit
@@ -225,12 +240,18 @@ def update_resolved_status(visit_id):
 
 
 @main.route('/api/prospects', methods=['GET'])
-def get_prospects():
+def get_prospects_postgres():
     try:
+        from sqlalchemy.orm import Session
+        from flask import current_app
+
         sales_name = request.args.get('sales')
         region = request.args.get('region')
 
-        query = Prospect.query
+        # ✅ Use PostgreSQL-bound session
+        pg_session = Session(db.get_engine(current_app, bind='postgres'))
+
+        query = pg_session.query(Prospect)
 
         if sales_name:
             query = query.filter(Prospect.SalesName == sales_name)
@@ -239,7 +260,10 @@ def get_prospects():
             query = query.filter(Prospect.ProspectReg == region)
 
         prospects = query.all()
-        return jsonify([p.to_dict() for p in prospects])
+        result = [p.to_dict() for p in prospects]
+
+        pg_session.close()
+        return jsonify(result)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -248,22 +272,27 @@ def get_prospects():
 
 
 @main.route('/api/prospects', methods=['POST'])
-def create_prospect():
+def create_prospect_postgres():
     try:
+        from sqlalchemy.orm import Session
+        from flask import current_app
+
         data = request.get_json()
+        print("📥 Received data:", data)
 
         ProspectId = data.get("ProspectId")
         ProspectReg = data.get("ProspectReg")
         ProspectSubReg = data.get("ProspectSubReg")
         SalesName = data.get("SalesName")
 
-        # Validate required fields
         if not all([ProspectReg, ProspectSubReg, SalesName]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        # Optional: check if SalesName exists in SalesMan table
-        if not SalesMan.query.filter_by(SalesName=SalesName).first():
-            return jsonify({"error": f"SalesName '{SalesName}' does not exist"}), 404
+        pg_session = Session(db.get_engine(current_app, bind='postgres'))
+
+        # if not pg_session.query(SalesMan).filter_by(SalesName=SalesName).first():
+        #     pg_session.close()
+        #     return jsonify({"error": f"SalesName '{SalesName}' does not exist"}), 404
 
         new_prospect = Prospect(
             ProspectId=ProspectId,
@@ -272,16 +301,20 @@ def create_prospect():
             SalesName=SalesName
         )
 
-        db.session.add(new_prospect)
-        db.session.commit()
+        pg_session.add(new_prospect)
+        pg_session.commit()
 
-        return jsonify({
+        response = {
             "message": "Prospect created successfully",
             "prospect": new_prospect.to_dict()
-        }), 201
+        }
+        print("✅ Successfully inserted")
+        pg_session.close()
+        return jsonify(response), 201
 
     except Exception as e:
-        db.session.rollback()
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 

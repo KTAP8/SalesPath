@@ -97,16 +97,18 @@ class Invoice(db.Model):
 
 
 class Prospect(db.Model):
-    __bind_key__ = 'mysql'
+    __bind_key__ = 'postgres'
     __tablename__ = 'Prospect'
 
-    ProspectId = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ProspectNum = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ProspectId = db.Column(db.String(255))  # your external ID
     ProspectReg = db.Column(db.String(255))
     ProspectSubReg = db.Column(db.String(255))
-    SalesName = db.Column(db.String(255), db.ForeignKey('SalesMan.SalesName'))
+    SalesName = db.Column(db.String(255))
 
     def to_dict(self):
         return {
+            "ProspectNum": self.ProspectNum,
             "ProspectId": self.ProspectId,
             "ProspectReg": self.ProspectReg,
             "ProspectSubReg": self.ProspectSubReg,
