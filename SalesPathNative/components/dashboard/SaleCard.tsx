@@ -20,7 +20,9 @@ const SaleCard = ({
         </View>
         <View style={styles.revenueContent}>
           <Text style={styles.revenueLabel}>Revenue Generated</Text>
-          <Text style={styles.revenueValue}>{data.TotalRevenue}฿</Text>
+          <Text style={styles.revenueValue}>
+            {data.TotalRevenue.toLocaleString("en-US")} ฿
+          </Text>
         </View>
       </View>
     </View>

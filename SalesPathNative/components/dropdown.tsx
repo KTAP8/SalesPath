@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
   label: {
     marginBottom: 5,
     fontSize: 14,
-    // fontWeight: "600",
+    fontWeight: "600",
     color: Colors.primaryBlue,
     fontFamily: "Lexend",
   },

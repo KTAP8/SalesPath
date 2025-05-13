@@ -55,7 +55,9 @@ export default function DashboardScreen() {
           />
           <OverviewItem
             label="Total Revenue"
-            value={`${sum(revenueStats.map((r) => r.TotalRevenue))}฿`}
+            value={`${sum(
+              revenueStats.map((r) => r.TotalRevenue)
+            ).toLocaleString("en-US")} ฿`}
           />
         </View>
 

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Modal,
+  Pressable,
+} from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";
@@ -32,6 +39,8 @@ export default function SalesmenScreen() {
   const [selectedSubRegion, setselectedSubRegion] = useState<string>("");
   const [postResult, setPostResult] = useState<string | null>(null);
   const [postNewResult, setPostNewResult] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
   const API_URL =
     Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -182,17 +191,19 @@ export default function SalesmenScreen() {
       })
       .then((response) => {
         setPostResult(JSON.stringify(response.data, null, 2));
+        setModalMessage("✅ Visit logged successfully!");
+        setShowModal(true);
       })
       .catch((error: any) => {
-        if (axios.isAxiosError(error)) {
-          setPostResult(
-            `Error: ${error.message},  ${
+        const message = axios.isAxiosError(error)
+          ? `❌ Error: ${error.message}, ${
               error.response?.data?.message || "No server response"
             }`
-          );
-        } else {
-          setPostResult(`Unexpected Error: ${error.message}`);
-        }
+          : `❌ Unexpected Error: ${error.message}`;
+
+        setPostResult(message);
+        setModalMessage(message);
+        setShowModal(true);
       });
   };
 
@@ -215,17 +226,19 @@ export default function SalesmenScreen() {
       })
       .then((response) => {
         setPostNewResult(JSON.stringify(response.data, null, 2));
+        setModalMessage("✅ New client visit logged successfully!");
+        setShowModal(true);
       })
       .catch((error: any) => {
-        if (axios.isAxiosError(error)) {
-          setPostNewResult(
-            `Error: ${error.message},  ${
+        const message = axios.isAxiosError(error)
+          ? `❌ Error: ${error.message}, ${
               error.response?.data?.message || "No server response"
             }`
-          );
-        } else {
-          setPostNewResult(`Unexpected Error: ${error.message}`);
-        }
+          : `❌ Unexpected Error: ${error.message}`;
+
+        setPostNewResult(message);
+        setModalMessage(message);
+        setShowModal(true);
       });
     console.log("data", data);
     console.log(postNewResult);
@@ -233,7 +246,7 @@ export default function SalesmenScreen() {
 
   return (
     <LayoutWithSidebar>
-      <ScrollView>
+      <ScrollView style={{ paddingHorizontal: 20 }}>
         <Text style={styles.header}>Salesmen</Text>
         <View style={styles.dropdown}>
           <Dropdown
@@ -253,7 +266,7 @@ export default function SalesmenScreen() {
 
           <View style={{ marginLeft: 20 }}>
             <CustomCheckbox
-              label={"NewClient"}
+              label={"New Client"}
               value={checkNew}
               onValueChange={handleNewToggle}
             ></CustomCheckbox>
@@ -364,6 +377,24 @@ export default function SalesmenScreen() {
         ) : (
           <View></View>
         )}
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={showModal}
+          onRequestClose={() => setShowModal(false)}
+        >
+          <View style={styles.overlay}>
+            <View style={styles.modalBox}>
+              <Text style={styles.message}>{modalMessage}</Text>
+              <Pressable
+                onPress={() => setShowModal(false)}
+                style={styles.button}
+              >
+                <Text style={styles.buttonText}>OK</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     </LayoutWithSidebar>
   );
@@ -371,7 +402,7 @@ export default function SalesmenScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    fontSize: 24,
+    fontSize: 35,
     marginBottom: 10,
     color: "#0b1c3e",
     fontWeight: "bold",
@@ -417,5 +448,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 100,
     padding: 38,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBox: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 20,
+    width: "80%",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  message: {
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 20,
+    fontFamily: "Lexend",
+  },
+  button: {
+    backgroundColor: Colors.primaryBlue,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontFamily: "Lexend",
   },
 });
