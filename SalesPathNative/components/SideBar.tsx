@@ -13,6 +13,7 @@ import {
 import { TABS } from "@/constants/Tabs";
 import { useRouter, usePathname } from "expo-router";
 import { Colors } from "@/constants/Colors";
+import { clearSession } from "../utils/auth";
 
 const Sidebar = () => {
   const router = useRouter();
@@ -66,11 +67,21 @@ const Sidebar = () => {
             active={pathname === "/profile"}
             onPress={() => router.push("/profile")}
           />
-          <MenuItem
+          {/* <MenuItem
             icon={LogOut}
             label={TABS.SIGNOUT}
             active={pathname === "/Logout"}
             onPress={() => router.push("/")}
+          /> */}
+
+          <MenuItem
+            icon={LogOut}
+            label={TABS.SIGNOUT}
+            active={pathname === "/Logout"}
+            onPress={async () => {
+              await clearSession();
+              router.push("/(screens)/login");
+            }}
           />
         </Section>
       </View>
