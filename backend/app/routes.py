@@ -9,9 +9,13 @@ from .models import Visit
 from flask import Blueprint, jsonify, request
 from sqlalchemy import text, and_, func
 from . import db  # import from __init__.py
-from .models import SalesMan, Client, Visit, Invoice, Prospect
+from .models import SalesMan, Client, Visit, Invoice, Prospect, User
 from sqlalchemy.orm import Session
 from flask import current_app
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.orm import Session
+
 
 main = Blueprint("main", __name__)
 
@@ -57,56 +61,139 @@ def get_all_clients():
 # get all visits + revenue: filter by SalesName, Region, date range, Activity, Resolved
 
 
+# @main.route('/api/visits', methods=['GET'])
+# def get_filtered_visits_cross_db():
+#     try:
+#         from flask import current_app
+#         from sqlalchemy.orm import Session
+
+#         # Step 1: Get filters from query params
+#         from_date = request.args.get('from')
+#         to_date = request.args.get('to')
+#         sales_name = request.args.get('sales')
+#         client_region = request.args.get('region')
+#         activity = request.args.get('activity')
+#         resolved = request.args.get('resolved')  # 0 or 1
+
+#         # Step 2: Create bind-specific sessions
+#         pg_session = Session(db.get_engine(current_app, bind='postgres'))
+#         mysql_session = Session(db.get_engine(current_app, bind='mysql'))
+
+#         # Step 3: Query Visit table (Postgres)
+#         visit_query = pg_session.query(Visit)
+#         if from_date:
+#             visit_query = visit_query.filter(Visit.VisitDateTime >= from_date)
+#         if to_date:
+#             visit_query = visit_query.filter(Visit.VisitDateTime <= to_date)
+#         if sales_name:
+#             visit_query = visit_query.filter(Visit.SalesName == sales_name)
+#         if activity:
+#             visit_query = visit_query.filter(Visit.Activity == activity)
+#         if resolved is not None:
+#             try:
+#                 visit_query = visit_query.filter(
+#                     Visit.Resolved == bool(int(resolved)))
+#             except ValueError:
+#                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
+
+#         visits = visit_query.all()
+
+#         # Step 4: Query Client and Invoice tables (MySQL)
+#         clients = mysql_session.query(Client).all()
+#         invoices = mysql_session.query(Invoice).all()
+
+#         client_map = {c.ClientId: c for c in clients}
+#         invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
+
+#         # Step 5: Combine data in memory
+#         response = []
+#         for v in visits:
+#             c = client_map.get(v.ClientId)
+#             invoice = invoice_map.get(
+#                 (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
+
+#             visit_data = v.to_dict()
+#             visit_data["ClientReg"] = c.ClientReg if c else None
+#             visit_data["ClientType"] = c.ClientType if c else None
+#             visit_data["InvoiceAmount"] = float(
+#                 invoice.Amount) if invoice else None
+
+#             # Region filter after join
+#             if client_region and visit_data["ClientReg"] != client_region:
+#                 continue
+
+#             response.append(visit_data)
+
+#         # Cleanup
+#         pg_session.close()
+#         mysql_session.close()
+
+#         return jsonify(response)
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
 @main.route('/api/visits', methods=['GET'])
+@jwt_required()
 def get_filtered_visits_cross_db():
     try:
-        from flask import current_app
-        from sqlalchemy.orm import Session
+        claims = get_jwt()
+        role = claims.get("role")
+        sales_name_jwt = claims.get("Username")
+        print(f"🔐 JWT Claims: role={role}, Username={sales_name_jwt}")
 
-        # Step 1: Get filters from query params
         from_date = request.args.get('from')
         to_date = request.args.get('to')
-        sales_name = request.args.get('sales')
+        requested_sales = request.args.get('sales')
         client_region = request.args.get('region')
         activity = request.args.get('activity')
         resolved = request.args.get('resolved')  # 0 or 1
 
-        # Step 2: Create bind-specific sessions
+        # 🔐 Restrict salesman to only see their own data
+        if role == 'salesman':
+            if requested_sales and requested_sales != sales_name_jwt:
+                return jsonify({"error": "Unauthorized access"}), 403
+            requested_sales = sales_name_jwt  # force overwrite
+
+        # Create sessions
         pg_session = Session(db.get_engine(current_app, bind='postgres'))
         mysql_session = Session(db.get_engine(current_app, bind='mysql'))
 
-        # Step 3: Query Visit table (Postgres)
+        # Query visits from Postgres
         visit_query = pg_session.query(Visit)
         if from_date:
             visit_query = visit_query.filter(Visit.VisitDateTime >= from_date)
         if to_date:
             visit_query = visit_query.filter(Visit.VisitDateTime <= to_date)
-        if sales_name:
-            visit_query = visit_query.filter(Visit.SalesName == sales_name)
+        if requested_sales:
+            visit_query = visit_query.filter(
+                Visit.SalesName == requested_sales)
         if activity:
             visit_query = visit_query.filter(Visit.Activity == activity)
         if resolved is not None:
             try:
                 visit_query = visit_query.filter(
-                    Visit.Resolved == bool(int(resolved)))
+                    Visit.Resolved == bool(int(resolved))
+                )
             except ValueError:
                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
 
         visits = visit_query.all()
 
-        # Step 4: Query Client and Invoice tables (MySQL)
+        # Join MySQL Client and Invoice
         clients = mysql_session.query(Client).all()
         invoices = mysql_session.query(Invoice).all()
 
         client_map = {c.ClientId: c for c in clients}
-        invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
+        invoice_map = {
+            (i.ClientId, i.TransactionDate): i for i in invoices
+        }
 
-        # Step 5: Combine data in memory
         response = []
         for v in visits:
             c = client_map.get(v.ClientId)
             invoice = invoice_map.get(
-                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
+                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None)
+            )
 
             visit_data = v.to_dict()
             visit_data["ClientReg"] = c.ClientReg if c else None
@@ -114,19 +201,18 @@ def get_filtered_visits_cross_db():
             visit_data["InvoiceAmount"] = float(
                 invoice.Amount) if invoice else None
 
-            # Region filter after join
             if client_region and visit_data["ClientReg"] != client_region:
                 continue
 
             response.append(visit_data)
 
-        # Cleanup
         pg_session.close()
         mysql_session.close()
-
         return jsonify(response)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -442,6 +528,67 @@ def get_client_counts():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@main.route('/api/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        username = data.get("username")
+        password = data.get("password")
+
+        if not username or not password:
+            return jsonify({"error": "Username and password are required"}), 400
+
+        user = User.query.filter_by(Username=username).first()
+
+        if not user or not check_password_hash(user.PasswordHash, password):
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        # ✅ Create access token with correct keys
+        access_token = create_access_token(identity=user.UserId, additional_claims={
+            "Role": user.Role,
+            "Username": user.Username
+        })
+
+        return jsonify({
+            "message": "Login successful",
+            "token": access_token,
+            "role": user.Role,
+            "Username": user.Username
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@main.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    sales_name = data.get("salesName", username)  # optional
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    # 🔐 Hash the password
+    hashed_password = generate_password_hash(password)
+
+    # ✅ Force role to 'salesman' (no admin via public route)
+    new_user = User(
+        username=username,
+        password=hashed_password,
+        role='salesman',
+        sales_name=sales_name
+    )
+
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({"message": "Salesman registered successfully"})
 
 # @main.route('/api/visit-columns')
 # def get_visit_columns():

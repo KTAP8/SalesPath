@@ -1,5 +1,29 @@
 from . import db
 from sqlalchemy.sql import func
+from werkzeug.security import generate_password_hash, check_password_hash
+
+
+class User(db.Model):
+    __bind_key__ = 'postgres'
+    __tablename__ = 'User'
+
+    UserId = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    Username = db.Column(db.String(255), unique=True, nullable=False)
+    PasswordHash = db.Column(db.Text, nullable=False)
+    Role = db.Column(db.String(50), nullable=False)
+
+    def set_password(self, password):
+        self.PasswordHash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.PasswordHash, password)
+
+    def to_dict(self):
+        return {
+            "UserId": self.UserId,
+            "Username": self.Username,
+            "Role": self.Role
+        }
 
 
 class SalesMan(db.Model):

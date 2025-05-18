@@ -19,6 +19,9 @@ import TableReport from "@/components/TableReport";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
+
 export default function SalesmanReportScreen() {
   const [salesmen, setSalesmen] = useState<string[]>([]);
   const [regions, setRegions] = useState<string[]>([]);
@@ -81,19 +84,40 @@ export default function SalesmanReportScreen() {
     }
   }, [selectedSalesman]);
 
-  const handleSearch = () => {
-    let params = new URLSearchParams();
-    if (selectedSalesman) params.append("sales", selectedSalesman);
-    if (selectedRegion) params.append("region", selectedRegion);
-    if (fromDate) params.append("from", fromDate);
-    if (toDate) params.append("to", toDate);
+  async function getToken() {
+    if (Platform.OS === "web") {
+      return localStorage.getItem("token");
+    } else {
+      return await SecureStore.getItemAsync("token");
+    }
+  }
 
-    axios
-      .get(`${API_URL}/api/visits?${params.toString()}`)
-      .then((res) => setReportData(res.data))
-      .catch((err) => console.error("Visit search error:", err));
+  const handleSearch = async () => {
+    try {
+      const token =
+        Platform.OS === "web"
+          ? localStorage.getItem("token")
+          : await SecureStore.getItemAsync("token");
 
-    console.log(params.toString());
+      const params = new URLSearchParams();
+      if (selectedSalesman) params.append("sales", selectedSalesman);
+      if (selectedRegion) params.append("region", selectedRegion);
+      if (fromDate) params.append("from", fromDate);
+      if (toDate) params.append("to", toDate);
+
+      const res = await axios.get(
+        `${API_URL}/api/visits?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`, // ✅ VERY IMPORTANT
+          },
+        }
+      );
+
+      setReportData(res.data);
+    } catch (err) {
+      console.error("❌ Visit search error:", err);
+    }
   };
 
   return (

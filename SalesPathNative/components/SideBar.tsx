@@ -80,7 +80,7 @@ const Sidebar = () => {
             active={pathname === "/Logout"}
             onPress={async () => {
               await clearSession();
-              router.push("/(screens)/login");
+              router.push("/login");
             }}
           />
         </Section>
