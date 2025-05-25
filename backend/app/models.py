@@ -3,41 +3,53 @@ from sqlalchemy.sql import func
 
 
 class SalesMan(db.Model):
-    __tablename__ = 'SalesMan'
+    __bind_key__ = 'chaluck'
+    __tablename__ = 'vsalesperson'
 
-    SalesName = db.Column(db.String(100), primary_key=True)
+    SalesId = db.Column(
+        db.BigInteger, primary_key=True, name="saleperson_id")
+    SalesName = db.Column(db.Text, name='name')
 
     def to_dict(self):
         return {
+            "SalesId": self.SalesId,
             "SalesName": self.SalesName
         }
 
 
 class Client(db.Model):
-    __tablename__ = 'Client'
+    __bind_key__ = 'chaluck'
+    __tablename__ = 'vcustomer'
+    __table_args__ = {'extend_existing': True}  # safety for views
 
-    ClientId = db.Column(db.String(255), primary_key=True)
-    ClientReg = db.Column(db.String(255))
-    ClientSubReg = db.Column(db.String(255))
-    ClientType = db.Column(db.String(255))
-    SalesName = db.Column(db.String(255), db.ForeignKey('SalesMan.SalesName'))
+    id = db.Column(db.BigInteger, primary_key=True)
+    ClientId = db.Column(db.Text, name="customernumber")
+    ClientReg = db.Column(db.String(100), name="addr4")
+    ClientSubReg = db.Column(db.String(100), name="shiptoaddr3")
+    SalesLogin = db.Column(db.Text, name="salepersonlogin")
+    SalesId = db.Column(db.BigInteger, name="saleperson_id")
+    ClientType = db.Column(db.Text, name="f4")
 
     def to_dict(self):
         return {
+            "id": self.id,
             "ClientId": self.ClientId,
             "ClientReg": self.ClientReg,
             "ClientSubReg": self.ClientSubReg,
+            "SalesLogin": self.SalesLogin,
+            "SalesId": self.SalesId,
             "ClientType": self.ClientType,
-            "SalesName": self.SalesName
         }
 
 
 class Visit(db.Model):
+    __bind_key__ = 'touchdb'
     __tablename__ = 'Visit'
 
     VisitId = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    SalesName = db.Column(db.String(255), db.ForeignKey('SalesMan.SalesName'))
-    ClientId = db.Column(db.String(255), db.ForeignKey('Client.ClientId'))
+    # , db.ForeignKey('SalesMan.SalesName'))
+    SalesName = db.Column(db.String(255))
+    ClientId = db.Column(db.String(255))  # , db.ForeignKey('Client.ClientId'))
     VisitDateTime = db.Column(db.DateTime, default=func.now())
     Activity = db.Column(db.String(255))
     Notes = db.Column(db.String(10000))
@@ -73,13 +85,17 @@ class Visit(db.Model):
 
 
 class Invoice(db.Model):
-    __tablename__ = 'Invoice'
+    __bind_key__ = 'chaluck'
+    __tablename__ = 'vlistinv'
+    __table_args__ = {'extend_existing': True}
 
-    InvoiceId = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    TaxId = db.Column(db.String(255))
-    TransactionDate = db.Column(db.Date)
-    ClientId = db.Column(db.String(255), db.ForeignKey('Client.ClientId'))
-    Amount = db.Column(db.Numeric(precision=12, scale=2))
+    InvoiceId = db.Column(db.BigInteger, primary_key=True, name='id')
+    TaxId = db.Column(db.Text, name='invnumber')
+    TransactionDate = db.Column(db.Date, name='transdate')
+    # hidden from to_dict
+    _customerId = db.Column(db.BigInteger, name='customer_id')
+    ClientId = db.Column(db.Text, name='customernumber')
+    Amount = db.Column(db.Numeric, name='amount')
 
     def to_dict(self):
         return {
@@ -87,20 +103,23 @@ class Invoice(db.Model):
             "TaxId": self.TaxId,
             "TransactionDate": self.TransactionDate.isoformat() if self.TransactionDate else None,
             "ClientId": self.ClientId,
-            "Amount": float(self.Amount)
+            "Amount": float(self.Amount) if self.Amount is not None else None
         }
 
 
 class Prospect(db.Model):
+    __bind_key__ = 'touchdb'
     __tablename__ = 'Prospect'
 
-    ProspectId = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ProspectNum = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ProspectId = db.Column(db.String(255))  # your external ID
     ProspectReg = db.Column(db.String(255))
     ProspectSubReg = db.Column(db.String(255))
-    SalesName = db.Column(db.String(255), db.ForeignKey('SalesMan.SalesName'))
+    SalesName = db.Column(db.String(255))
 
     def to_dict(self):
         return {
+            "ProspectNum": self.ProspectNum,
             "ProspectId": self.ProspectId,
             "ProspectReg": self.ProspectReg,
             "ProspectSubReg": self.ProspectSubReg,

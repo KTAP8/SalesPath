@@ -28,12 +28,14 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     axios
-      .get(`${API_URL}/api/clients-per-salesman?from=2024-04-01&to=2024-04-30`)
+      .get(`${API_URL}/api/clients-per-salesman?from=2025-04-01&to=2025-05-30`)
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
+    console.log(clientStats);
+
     axios
-      .get(`${API_URL}/api/revenue?from=2024-04-01&to=2024-04-30`)
+      .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`)
       .then((res) => setRevenueStats(res.data))
       .catch((err) => console.error("Revenue error:", err));
   }, []);
