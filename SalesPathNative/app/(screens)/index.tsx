@@ -42,7 +42,7 @@ export default function SalesmenScreen() {
   const [showModal, setShowModal] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
   const API_URL =
-    Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
+    Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:3000";
 
   useEffect(() => {
     axios

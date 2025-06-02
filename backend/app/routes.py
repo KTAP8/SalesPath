@@ -453,6 +453,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, text
 from datetime import datetime
 from . import db
+from sqlalchemy.sql import exists
+from sqlalchemy.exc import OperationalError
 
 main = Blueprint("main", __name__)
 
@@ -480,8 +482,27 @@ def get_all_salesmen():
 @main.route('/api/clients', methods=['GET'])
 def get_all_clients():
     try:
-        clients = Client.query.all()
-        return jsonify([client.to_dict() for client in clients])
+        sales_name = request.args.get('sales')
+        session = Session(db.get_engine(current_app, bind='chaluck'))
+
+        query = session.query(Client)
+
+        if sales_name:
+            # Step 1: Get SalesLogin from SalesMan using SalesName
+            salesman = session.query(SalesMan).filter(
+                SalesMan.SalesName == sales_name).first()
+            if salesman:
+                # Step 2: Filter clients using the SalesLogin
+                query = query.filter(Client.SalesLogin == salesman.SalesLogin)
+            else:
+                # No matching salesperson found, return empty list
+                return jsonify([])
+
+        result = [p.to_dict() for p in query.all()]
+        session.close()
+
+        return jsonify(result)
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -836,3 +857,384 @@ def get_client_counts():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+@main.route('/api/webhook', methods=['POST'])
+def dialogflow_webhook():
+    try:
+        req = request.get_json()
+        intent = req.get('queryResult', {}).get(
+            'intent', {}).get('displayName')
+        output_contexts = req.get('queryResult', {}).get('outputContexts', [])
+        print("💡 Detected intent:", intent)
+
+        def get_param_from_contexts(name):
+            for ctx in output_contexts:
+                params = ctx.get('parameters', {})
+                if name in params:
+                    return params[name]
+            return "-"
+        if intent == "AskCustomerType":
+            customer_type = req.get('queryResult', {}).get(
+                'parameters', {}).get('customer_type')
+
+            if customer_type == "ใหม่":
+                return jsonify({
+                    'fulfillmentText': "ขอทราบชื่อลูกค้าใหม่ของคุณครับ",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_customer_name",
+                            "lifespanCount": 5
+                        }
+                    ]
+                })
+
+            elif customer_type == "เดิม":
+                return jsonify({
+                    'fulfillmentText': "กรุณาระบุรหัสลูกค้าของคุณครับ",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_client_id",
+                            "lifespanCount": 5
+                        }
+                    ]
+                })
+
+            else:
+                return jsonify({
+                    'fulfillmentText': "กรุณาระบุว่าเป็นลูกค้าใหม่หรือเดิมครับ"
+                })
+        elif intent == "GetCustomerName":
+            customer_name = req.get('queryResult', {}).get(
+                'parameters', {}).get('customer_name')
+
+            return jsonify({
+                'fulfillmentText': f"รับทราบชื่อลูกค้า: {customer_name} ครับ\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_customer_city",
+                        "lifespanCount": 5,
+                        "parameters": {
+                                "customer_name": customer_name
+                        }
+                    }
+                ]
+            })
+
+        elif intent == "GetCustomerCity":
+            city = req.get('queryResult', {}).get('parameters', {}).get('city')
+            customer_name = get_param_from_contexts('customer_name')
+
+            return jsonify({
+                'fulfillmentText': f"ลูกค้า {customer_name} อยู่ที่ {city} ครับ กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_customer_subregion",
+                        "lifespanCount": 5,
+                        "parameters": {
+                            "city": city,
+                            "customer_name": customer_name
+                        }
+                    }
+                ]
+            })
+
+        elif intent == "GetCustomerSubregion":
+            subregion = req.get('queryResult', {}).get(
+                'parameters', {}).get('subregion')
+            customer_name = get_param_from_contexts("customer_name")
+            city = get_param_from_contexts("city")
+
+            response_text = (
+                f"คุณได้ระบุข้อมูลดังนี้:\n"
+                f"👤 ชื่อลูกค้า: {customer_name}\n"
+                f"📍 ภูมิภาค: {city}\n"
+                f"🗺️ เขต/อำเภอ: {subregion}\n"
+                "กรุณายืนยันข้อมูล: ใช่ หรือ ไม่ใช่?"
+            )
+
+            return jsonify({
+                'fulfillmentText': response_text,
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_confirmation_new_customer",
+                        "lifespanCount": 5,
+                        "parameters": {
+                            "customer_name": customer_name,
+                            "city": city,
+                            "subregion": subregion
+                        }
+                    }
+                ]
+            })
+
+        elif intent == "ConfirmNewCustomer":
+            customer_name = get_param_from_contexts("customer_name")
+            city = get_param_from_contexts("city")
+            subregion = get_param_from_contexts("subregion")
+
+            user_id = req.get('originalDetectIntentRequest', {}).get(
+                'payload', {}).get('data', {}).get('source', {}).get('userId', '-')
+
+            session = None
+            try:
+                engine = db.get_engine(current_app, bind='touchdb', connect_args={
+                                       "connect_timeout": 3})
+                session = Session(engine)
+
+                new_prospect = Prospect(
+                    ProspectId=customer_name,
+                    ProspectReg=city,
+                    ProspectSubReg=subregion,
+                    SalesName=user_id
+                )
+
+                session.add(new_prospect)
+                session.commit()
+                session.close()
+
+                return jsonify({
+                    'fulfillmentText': "✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว\nกรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม) เพื่อจดครั้งต่อไป",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_customer_type",
+                            "lifespanCount": 5
+                        }
+                    ]
+                })
+
+            except OperationalError as e:
+                print("❌ Database timeout or connection error:", e)
+                return jsonify({
+                    'fulfillmentText': "❌ ระบบตอบสนองช้า กรุณาลองใหม่ในอีกสักครู่ครับ"
+                })
+            except Exception as e:
+                print("❌ General error:", e)
+                return jsonify({
+                    'fulfillmentText': "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"
+                })
+            finally:
+                if session:
+                    session.close()
+
+        elif intent == "GetClientId":
+            clientId = req.get('queryResult', {}).get(
+                'parameters', {}).get('clientId')
+            print("🔍 Checking clientId:", clientId)
+
+            try:
+                session = Session(db.get_engine(current_app, bind='chaluck'))
+                exists_query = session.query(
+                    session.query(Client).filter_by(ClientId=clientId).exists()
+                ).scalar()
+                session.close()
+
+                if exists_query:
+                    return jsonify({
+                        'fulfillmentText': f"พบลูกค้า {clientId} ในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา (เท่านั้น)",
+                        'outputContexts': [
+                            {
+                                "name": f"{req['session']}/contexts/awaiting_activity_type",
+                                "lifespanCount": 5,
+                                "parameters": {
+                                    "clientId": clientId
+                                }
+                            }
+                        ]
+                    })
+                else:
+                    return jsonify({
+                        'fulfillmentText': "ไม่พบรหัสลูกค้า กรุณาระบุใหม่อีกครั้งครับ"
+                    })
+
+            except Exception as e:
+                print("❌ Error querying clientId:", e)
+                return jsonify({
+                    'fulfillmentText': "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ"
+                })
+
+        elif intent == "AskActivityType":
+            activity_type = req.get('queryResult', {}).get(
+                'parameters', {}).get('activity_type')
+            clientId = get_param_from_contexts("clientId")
+
+            return jsonify({
+                'fulfillmentText': f"กิจกรรม: {activity_type} ✅\nกรุณาระบุหมายเหตุ/ข้อมูลสำหรับกิจกรรมนี้ครับ",
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_activity_note",
+                        "lifespanCount": 5,
+                        "parameters": {
+                            "clientId": clientId,
+                            "activityType": activity_type
+                        }
+                    }
+                ]
+            })
+
+        elif intent == "ProvideActivityNote":
+            activity_note = req.get('queryResult', {}).get(
+                'parameters', {}).get('activity_note')
+            clientId = get_param_from_contexts("clientId")
+            activityType = get_param_from_contexts("activityType")
+
+            print("📝 Note:", activity_note, "| Type:", activityType)
+
+            if activityType == "แจ้งปัญหา":
+                return jsonify({
+                    'fulfillmentText': "กรุณาระบุรายละเอียดของปัญหาด้วยครับ",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_problem_note",
+                            "lifespanCount": 5,
+                            "parameters": {
+                                "clientId": clientId,
+                                "activityType": activityType,
+                                "activityNote": activity_note
+                            }
+                        }
+                    ]
+                })
+            else:
+                return jsonify({
+                    'fulfillmentText': (
+                        f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
+                        f"📄 รหัสลูกค้า: {clientId}\n"
+                        f"📌 กิจกรรม: {activityType}\n"
+                        f"📝 หมายเหตุ: {activity_note}\n"
+                        "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
+                    ),
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
+                            "lifespanCount": 5,
+                            "parameters": {
+                                "clientId": clientId,
+                                "activityType": activityType,
+                                "activityNote": activity_note
+                            }
+                        }
+                    ]
+                })
+
+        elif intent == "ProvideProblemNote":
+            problem_note = req.get('queryResult', {}).get(
+                'parameters', {}).get('problem_note')
+            clientId = get_param_from_contexts("clientId")
+            activityType = get_param_from_contexts("activityType")
+            activityNote = get_param_from_contexts("activityNote")
+
+            print("🐞 Problem note received:", problem_note)
+
+            confirmation_text = (
+                f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
+                f"📄 รหัสลูกค้า: {clientId}\n"
+                f"📌 กิจกรรม: {activityType}\n"
+                f"📝 หมายเหตุ: {activityNote}\n"
+                f"🐞 รายละเอียดปัญหา: {problem_note}\n"
+                "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
+            )
+
+            return jsonify({
+                'fulfillmentText': confirmation_text,
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
+                        "lifespanCount": 5,
+                        "parameters": {
+                            "clientId": clientId,
+                            "activityType": activityType,
+                            "activityNote": activityNote,
+                            "problemNote": problem_note
+                        }
+                    }
+                ]
+            })
+
+        elif intent == "ConfirmExistingCustomerActivity - yes":
+            clientId = get_param_from_contexts("clientId")
+            activityType = get_param_from_contexts("activityType")
+            activityNote = get_param_from_contexts("activityNote")
+            problemNote = get_param_from_contexts("problemNote")
+            visit_datetime = datetime.now()
+
+            # Map Thai activity to internal codes
+            activity_map = {
+                "ขาย": "Sale",
+                "ความสัมพันธ์ลูกค้า": "Relation",
+                "แจ้งปัญหา": "Problem"
+            }
+            activity_code = activity_map.get(activityType, activityType)
+
+            # Determine resolved status
+            resolved = False if activity_code == "Problem" else True
+
+            # Extract LINE user ID
+            user_id = req.get('originalDetectIntentRequest', {}).get(
+                'payload', {}).get('data', {}).get('source', {}).get('userId', '-')
+
+            try:
+                session = Session(db.get_engine(current_app, bind='touchdb'))
+
+                new_visit = Visit(
+                    SalesName=user_id,
+                    ClientId=clientId,
+                    Activity=activity_code,
+                    Notes=activityNote,
+                    ProblemNotes=problemNote,
+                    Resolved=resolved,
+                    VisitDateTime=visit_datetime
+                )
+
+                session.add(new_visit)
+                session.commit()
+                session.close()
+
+                return jsonify({
+                    'fulfillmentText': "✅ บันทึกข้อมูลเรียบร้อยแล้ว\nกรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม) เพื่อจดครั้งต่อไป",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_customer_type",
+                            "lifespanCount": 5
+                        }
+                    ]
+                })
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return jsonify({
+                    'fulfillmentText': "❌ ระบบเกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"
+                })
+
+        elif intent == "ConfirmExistingCustomerActivity - no":
+            return jsonify({
+                'fulfillmentText': "โอเคครับ หากต้องการแก้ไข กรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม)",
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_customer_type",
+                        "lifespanCount": 5
+                    }
+                ]
+            })
+
+        elif intent == "RestartConversation":
+            return jsonify({
+                'fulfillmentText': "เริ่มต้นใหม่ครับ กรุณาระบุว่าคุณเป็นลูกค้าใหม่หรือลูกค้าเดิม",
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/_",
+                        "lifespanCount": 0
+                    },
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_customer_type",
+                        "lifespanCount": 5
+                    }
+                ]
+            })
+
+        return jsonify({'fulfillmentText': "ไม่พบ intent ที่ต้องการ"})
+
+    except Exception as e:
+        print("❌ Error:", e)
+        return jsonify({'fulfillmentText': "ระบบเกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง"}), 200

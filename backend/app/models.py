@@ -9,6 +9,7 @@ class SalesMan(db.Model):
     SalesId = db.Column(
         db.BigInteger, primary_key=True, name="saleperson_id")
     SalesName = db.Column(db.Text, name='name')
+    SalesLogin = db.Column(db.Text, name='saleperson_login')  # ✅ fixed here
 
     def to_dict(self):
         return {
