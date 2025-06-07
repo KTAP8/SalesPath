@@ -1,12 +1,5 @@
-import { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  Pressable,
-} from "react-native";
+~import { useEffect, useState } from "react";
+import {View,Text, ScrollView,StyleSheet,Modal,Pressable, } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";

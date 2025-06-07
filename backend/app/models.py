@@ -1,26 +1,23 @@
 from . import db
 from sqlalchemy.sql import func
+from datetime import datetime
 
 
 class SalesMan(db.Model):
-    __bind_key__ = 'chaluck'
-    __tablename__ = 'vsalesperson'
+    __bind_key__ = "chaluck"
+    __tablename__ = "vsalesperson"
 
-    SalesId = db.Column(
-        db.BigInteger, primary_key=True, name="saleperson_id")
-    SalesName = db.Column(db.Text, name='name')
+    SalesId = db.Column(db.BigInteger, primary_key=True, name="saleperson_id")
+    SalesName = db.Column(db.Text, name="name")
 
     def to_dict(self):
-        return {
-            "SalesId": self.SalesId,
-            "SalesName": self.SalesName
-        }
+        return {"SalesId": self.SalesId, "SalesName": self.SalesName}
 
 
 class Client(db.Model):
-    __bind_key__ = 'chaluck'
-    __tablename__ = 'vcustomer'
-    __table_args__ = {'extend_existing': True}  # safety for views
+    __bind_key__ = "chaluck"
+    __tablename__ = "vcustomer"
+    __table_args__ = {"extend_existing": True}  # safety for views
 
     id = db.Column(db.BigInteger, primary_key=True)
     ClientId = db.Column(db.Text, name="customernumber")
@@ -43,8 +40,8 @@ class Client(db.Model):
 
 
 class Visit(db.Model):
-    __bind_key__ = 'touchdb'
-    __tablename__ = 'Visit'
+    __bind_key__ = "touchdb"
+    __tablename__ = "Visit"
 
     VisitId = db.Column(db.Integer, primary_key=True, autoincrement=True)
     # , db.ForeignKey('SalesMan.SalesName'))
@@ -62,14 +59,25 @@ class Visit(db.Model):
             "VisitId": self.VisitId,
             "SalesName": self.SalesName,
             "ClientId": self.ClientId,
-            "VisitDateTime": self.VisitDateTime.isoformat() if self.VisitDateTime else None,
+            "VisitDateTime": (
+                self.VisitDateTime.isoformat() if self.VisitDateTime else None
+            ),
             "Activity": self.Activity,
             "Notes": self.Notes,
             "ProblemNotes": self.ProblemNotes,
-            "Resolved": self.Resolved
+            "Resolved": self.Resolved,
         }
 
-    def __init__(self, SalesName, ClientId, Activity, Notes=None, ProblemNotes=None, Resolved=None, VisitDateTime=None):
+    def __init__(
+        self,
+        SalesName,
+        ClientId,
+        Activity,
+        Notes=None,
+        ProblemNotes=None,
+        Resolved=None,
+        VisitDateTime=None,
+    ):
         self.SalesName = SalesName
         self.ClientId = ClientId
         self.Activity = Activity
@@ -85,31 +93,33 @@ class Visit(db.Model):
 
 
 class Invoice(db.Model):
-    __bind_key__ = 'chaluck'
-    __tablename__ = 'vlistinv'
-    __table_args__ = {'extend_existing': True}
+    __bind_key__ = "chaluck"
+    __tablename__ = "vlistinv"
+    __table_args__ = {"extend_existing": True}
 
-    InvoiceId = db.Column(db.BigInteger, primary_key=True, name='id')
-    TaxId = db.Column(db.Text, name='invnumber')
-    TransactionDate = db.Column(db.Date, name='transdate')
+    InvoiceId = db.Column(db.BigInteger, primary_key=True, name="id")
+    TaxId = db.Column(db.Text, name="invnumber")
+    TransactionDate = db.Column(db.Date, name="transdate")
     # hidden from to_dict
-    _customerId = db.Column(db.BigInteger, name='customer_id')
-    ClientId = db.Column(db.Text, name='customernumber')
-    Amount = db.Column(db.Numeric, name='amount')
+    _customerId = db.Column(db.BigInteger, name="customer_id")
+    ClientId = db.Column(db.Text, name="customernumber")
+    Amount = db.Column(db.Numeric, name="amount")
 
     def to_dict(self):
         return {
             "InvoiceId": self.InvoiceId,
             "TaxId": self.TaxId,
-            "TransactionDate": self.TransactionDate.isoformat() if self.TransactionDate else None,
+            "TransactionDate": (
+                self.TransactionDate.isoformat() if self.TransactionDate else None
+            ),
             "ClientId": self.ClientId,
-            "Amount": float(self.Amount) if self.Amount is not None else None
+            "Amount": float(self.Amount) if self.Amount is not None else None,
         }
 
 
 class Prospect(db.Model):
-    __bind_key__ = 'touchdb'
-    __tablename__ = 'Prospect'
+    __bind_key__ = "touchdb"
+    __tablename__ = "Prospect"
 
     ProspectNum = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ProspectId = db.Column(db.String(255))  # your external ID
@@ -123,5 +133,27 @@ class Prospect(db.Model):
             "ProspectId": self.ProspectId,
             "ProspectReg": self.ProspectReg,
             "ProspectSubReg": self.ProspectSubReg,
-            "SalesName": self.SalesName
+            "SalesName": self.SalesName,
+        }
+
+
+class Auth_Users(db.Model):
+    __bind_key__ = "touchdb"
+    __tablename__ = "auth_users"
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # handy serializer for JSON responses
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

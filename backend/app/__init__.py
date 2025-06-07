@@ -3,10 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 import os
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 
 load_dotenv()  # ⬅️ Load from .env
 
-db = SQLAlchemy()
+db = SQLAlchemy()# db.Model is the base class that all your ORM tables inherit from when you use Flask-SQLAlchemy 
 
 
 def create_app():
@@ -27,6 +28,8 @@ def create_app():
     CORS(app)  # ⬅️ Add this line
     # 🔌 Initialize DB
     db.init_app(app)
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "change_me_now")
+    jwt = JWTManager(app) 
 
     # 🔗 Register blueprints
     from .routes import main

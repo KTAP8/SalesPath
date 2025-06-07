@@ -447,28 +447,31 @@
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 from sqlalchemy import tuple_
-from .models import Visit, Client, Invoice, Prospect, SalesMan
+from .models import Visit, Client, Invoice, Prospect, SalesMan, Auth_Users
 from flask import request, jsonify, Blueprint, current_app
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, text
 from datetime import datetime
 from . import db
+from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash
+from flask_jwt_extended import create_access_token
 
 main = Blueprint("main", __name__)
 
 
-@main.route('/')
+@main.route("/")
 def test_connection():
     try:
-        engine = db.get_engine(app=None, bind='touchdb')
+        engine = db.get_engine(app=None, bind="touchdb")
         with engine.connect() as conn:
-            conn.execute(text('SELECT 1'))
-        return '✅ Connected to PostgreSQL (touchdb) successfully!'
+            conn.execute(text("SELECT 1"))
+        return "✅ Connected to PostgreSQL (touchdb) successfully!"
     except Exception as e:
-        return f'❌ Failed to connect to db: {str(e)}'
+        return f"❌ Failed to connect to db: {str(e)}"
 
 
-@main.route('/api/salesmen', methods=['GET'])
+@main.route("/api/salesmen", methods=["GET"])
 def get_all_salesmen():
     try:
         salesmen = SalesMan.query.all()
@@ -477,7 +480,7 @@ def get_all_salesmen():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/clients', methods=['GET'])
+@main.route("/api/clients", methods=["GET"])
 def get_all_clients():
     try:
         clients = Client.query.all()
@@ -486,18 +489,18 @@ def get_all_clients():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/visits', methods=['GET'])
+@main.route("/api/visits", methods=["GET"])
 def get_filtered_visits_cross_db():
     try:
-        from_date = request.args.get('from')
-        to_date = request.args.get('to')
-        sales_name = request.args.get('sales')
-        client_region = request.args.get('region')
-        activity = request.args.get('activity')
-        resolved = request.args.get('resolved')
+        from_date = request.args.get("from")
+        to_date = request.args.get("to")
+        sales_name = request.args.get("sales")
+        client_region = request.args.get("region")
+        activity = request.args.get("activity")
+        resolved = request.args.get("resolved")
 
-        touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
-        chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
+        touchdb_session = Session(db.get_engine(current_app, bind="touchdb"))
+        chaluck_session = Session(db.get_engine(current_app, bind="chaluck"))
 
         # Step 1: Filter Visit records from touchdb
         visit_query = touchdb_session.query(Visit)
@@ -511,8 +514,7 @@ def get_filtered_visits_cross_db():
             visit_query = visit_query.filter(Visit.Activity == activity)
         if resolved is not None:
             try:
-                visit_query = visit_query.filter(
-                    Visit.Resolved == bool(int(resolved)))
+                visit_query = visit_query.filter(Visit.Resolved == bool(int(resolved)))
             except ValueError:
                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
 
@@ -524,8 +526,7 @@ def get_filtered_visits_cross_db():
 
         # Step 3: Build (ClientId, Date) keys from visits
         invoice_keys = {
-            (v.ClientId, v.VisitDateTime.date())
-            for v in visits if v.VisitDateTime
+            (v.ClientId, v.VisitDateTime.date()) for v in visits if v.VisitDateTime
         }
 
         # Step 4: Query only needed invoices from chaluck
@@ -541,13 +542,13 @@ def get_filtered_visits_cross_db():
         for v in visits:
             c = client_map.get(v.ClientId)
             invoice = invoice_map.get(
-                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
+                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None)
+            )
 
             visit_data = v.to_dict()
             visit_data["ClientReg"] = c.ClientReg if c else None
             visit_data["ClientType"] = c.ClientType if c else None
-            visit_data["InvoiceAmount"] = float(
-                invoice.Amount) if invoice else None
+            visit_data["InvoiceAmount"] = float(invoice.Amount) if invoice else None
 
             if client_region and visit_data["ClientReg"] != client_region:
                 continue
@@ -560,11 +561,12 @@ def get_filtered_visits_cross_db():
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/visits', methods=['POST'])
+@main.route("/api/visits", methods=["POST"])
 def create_visit():
     try:
         data = request.get_json()
@@ -579,8 +581,11 @@ def create_visit():
         if not all([SalesName, ClientId, Activity, Notes]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        VisitDateTime = datetime.fromisoformat(
-            visit_datetime_str) if visit_datetime_str else datetime.now()
+        VisitDateTime = (
+            datetime.fromisoformat(visit_datetime_str)
+            if visit_datetime_str
+            else datetime.now()
+        )
 
         new_visit = Visit(
             SalesName=SalesName,
@@ -589,24 +594,28 @@ def create_visit():
             Notes=Notes,
             ProblemNotes=ProblemNotes,
             Resolved=Resolved,
-            VisitDateTime=VisitDateTime
+            VisitDateTime=VisitDateTime,
         )
 
-        session = Session(db.get_engine(current_app, bind='touchdb'))
+        session = Session(db.get_engine(current_app, bind="touchdb"))
         session.add(new_visit)
         session.commit()
         response = new_visit.to_dict()
         session.close()
 
-        return jsonify({"message": "Visit created successfully", "visit": response}), 201
+        return (
+            jsonify({"message": "Visit created successfully", "visit": response}),
+            201,
+        )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/visit/<int:visit_id>/resolve', methods=['PUT'])
+@main.route("/api/visit/<int:visit_id>/resolve", methods=["PUT"])
 def update_resolved_status(visit_id):
     try:
         data = request.get_json(force=True, silent=True)
@@ -615,7 +624,7 @@ def update_resolved_status(visit_id):
 
         resolved = int(data["Resolved"])
 
-        session = Session(db.get_engine(current_app, bind='touchdb'))
+        session = Session(db.get_engine(current_app, bind="touchdb"))
         visit = session.get(Visit, visit_id)
         if not visit:
             session.close()
@@ -625,23 +634,25 @@ def update_resolved_status(visit_id):
         session.commit()
 
         session.close()
-        return jsonify({
-            "message": f"Visit ID {visit_id} resolved status updated.",
-            "VisitId": visit.VisitId,
-            "Resolved": visit.Resolved
-        })
+        return jsonify(
+            {
+                "message": f"Visit ID {visit_id} resolved status updated.",
+                "VisitId": visit.VisitId,
+                "Resolved": visit.Resolved,
+            }
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/prospects', methods=['GET'])
+@main.route("/api/prospects", methods=["GET"])
 def get_prospects():
     try:
-        sales_name = request.args.get('sales')
-        region = request.args.get('region')
+        sales_name = request.args.get("sales")
+        region = request.args.get("region")
 
-        session = Session(db.get_engine(current_app, bind='touchdb'))
+        session = Session(db.get_engine(current_app, bind="touchdb"))
         query = session.query(Prospect)
 
         if sales_name:
@@ -657,7 +668,7 @@ def get_prospects():
         return jsonify({"error": str(e)}), 500
 
 
-@main.route('/api/prospects', methods=['POST'])
+@main.route("/api/prospects", methods=["POST"])
 def create_prospect():
     try:
         data = request.get_json()
@@ -669,19 +680,22 @@ def create_prospect():
         if not all([ProspectReg, ProspectSubReg, SalesName]):
             return jsonify({"error": "Missing required fields"}), 400
 
-        session = Session(db.get_engine(current_app, bind='touchdb'))
+        session = Session(db.get_engine(current_app, bind="touchdb"))
         new_prospect = Prospect(
             ProspectId=ProspectId,
             ProspectReg=ProspectReg,
             ProspectSubReg=ProspectSubReg,
-            SalesName=SalesName
+            SalesName=SalesName,
         )
 
         session.add(new_prospect)
         session.commit()
         response = new_prospect.to_dict()
         session.close()
-        return jsonify({"message": "Prospect created successfully", "prospect": response}), 201
+        return (
+            jsonify({"message": "Prospect created successfully", "prospect": response}),
+            201,
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -694,9 +708,14 @@ def get_invoices():
         to_date = request.args.get("to")
 
         if not from_date and not to_date:
-            return jsonify({"error": "Please provide a date range to avoid full-table scan"}), 400
+            return (
+                jsonify(
+                    {"error": "Please provide a date range to avoid full-table scan"}
+                ),
+                400,
+            )
 
-        session = Session(db.get_engine(current_app, bind='chaluck'))
+        session = Session(db.get_engine(current_app, bind="chaluck"))
         query = session.query(Invoice)
 
         if from_date:
@@ -719,15 +738,16 @@ def get_salesman_revenue():
 
         # 🗓️ Default from = 1st day of previous month, to = today
         today = datetime.today()
-        default_from = (today.replace(day=1) -
-                        relativedelta(months=1)).strftime("%Y-%m-%d")
+        default_from = (today.replace(day=1) - relativedelta(months=1)).strftime(
+            "%Y-%m-%d"
+        )
         default_to = today.strftime("%Y-%m-%d")
 
         from_date = request.args.get("from") or default_from
         to_date = request.args.get("to") or default_to
 
-        session_touchdb = Session(db.get_engine(current_app, bind='touchdb'))
-        session_chaluck = Session(db.get_engine(current_app, bind='chaluck'))
+        session_touchdb = Session(db.get_engine(current_app, bind="touchdb"))
+        session_chaluck = Session(db.get_engine(current_app, bind="chaluck"))
 
         # 🧾 Fetch visit data with date range
         visits = session_touchdb.query(Visit).filter(Visit.Activity == "Sale")
@@ -737,10 +757,8 @@ def get_salesman_revenue():
 
         # 📄 Fetch invoice and client data, filtered by date
         invoice_query = session_chaluck.query(Invoice)
-        invoice_query = invoice_query.filter(
-            Invoice.TransactionDate >= from_date)
-        invoice_query = invoice_query.filter(
-            Invoice.TransactionDate <= to_date)
+        invoice_query = invoice_query.filter(Invoice.TransactionDate >= from_date)
+        invoice_query = invoice_query.filter(Invoice.TransactionDate <= to_date)
         invoices = invoice_query.all()
 
         clients = session_chaluck.query(Client).all()
@@ -752,9 +770,11 @@ def get_salesman_revenue():
 
         for v in visit_data:
             client = client_map.get(v.ClientId)
-            invoice = invoice_map.get(
-                (v.ClientId, v.VisitDateTime.date())
-            ) if v.VisitDateTime else None
+            invoice = (
+                invoice_map.get((v.ClientId, v.VisitDateTime.date()))
+                if v.VisitDateTime
+                else None
+            )
 
             if region and (not client or client.ClientReg != region):
                 continue
@@ -771,14 +791,16 @@ def get_salesman_revenue():
         session_touchdb.close()
         session_chaluck.close()
 
-        return jsonify([
-            {
-                "SalesName": name,
-                "TotalRevenue": data["TotalRevenue"],
-                "ClientSoldCount": len(data["ClientIds"])
-            }
-            for name, data in revenue_summary.items()
-        ])
+        return jsonify(
+            [
+                {
+                    "SalesName": name,
+                    "TotalRevenue": data["TotalRevenue"],
+                    "ClientSoldCount": len(data["ClientIds"]),
+                }
+                for name, data in revenue_summary.items()
+            ]
+        )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -797,36 +819,41 @@ def get_client_counts():
         if not from_date:
             from_date = (date.today() - timedelta(days=30)).isoformat()
 
-        session_touchdb = Session(db.get_engine(current_app, bind='touchdb'))
-        session_chaluck = Session(db.get_engine(current_app, bind='chaluck'))
+        session_touchdb = Session(db.get_engine(current_app, bind="touchdb"))
+        session_chaluck = Session(db.get_engine(current_app, bind="chaluck"))
 
         # Step 1: Fetch visited clients from touchdb
-        visit_data = session_touchdb.query(
-            Visit.SalesName,
-            func.count(func.distinct(Visit.ClientId)).label("VisitedClients")
-        ).filter(
-            Visit.VisitDateTime >= from_date,
-            Visit.VisitDateTime <= to_date
-        ).group_by(Visit.SalesName).all()
+        visit_data = (
+            session_touchdb.query(
+                Visit.SalesName,
+                func.count(func.distinct(Visit.ClientId)).label("VisitedClients"),
+            )
+            .filter(Visit.VisitDateTime >= from_date, Visit.VisitDateTime <= to_date)
+            .group_by(Visit.SalesName)
+            .all()
+        )
 
         visited_map = {row.SalesName: row.VisitedClients for row in visit_data}
 
         # Step 2: Fetch all salesmen and their total clients from chaluck
-        query = session_chaluck.query(
-            SalesMan.SalesName,
-            func.count(Client.ClientId).label("TotalClients")
-        ).outerjoin(
-            Client, Client.SalesId == SalesMan.SalesId
-        ).group_by(SalesMan.SalesName)
+        query = (
+            session_chaluck.query(
+                SalesMan.SalesName, func.count(Client.ClientId).label("TotalClients")
+            )
+            .outerjoin(Client, Client.SalesId == SalesMan.SalesId)
+            .group_by(SalesMan.SalesName)
+        )
 
         result = []
         for row in query.all():
             visited = visited_map.get(row.SalesName, 0)
-            result.append({
-                "SalesName": row.SalesName,
-                "TotalClients": row.TotalClients,
-                "VisitedClients": visited
-            })
+            result.append(
+                {
+                    "SalesName": row.SalesName,
+                    "TotalClients": row.TotalClients,
+                    "VisitedClients": visited,
+                }
+            )
 
         session_touchdb.close()
         session_chaluck.close()
@@ -834,5 +861,64 @@ def get_client_counts():
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+@main.route("/api/users", methods=["POST"])
+def create_user():
+    """
+    POST /api/users
+    Body JSON: { "email": "...", "password": "..." }
+
+    1. Validate input
+    2. Refuse duplicates
+    3. Hash password
+    4. INSERT new row
+    5. Return the public data (never the hash)
+    """
+    data = request.get_json(silent=True)
+    if not data or not data.get("email") or not data.get("password"):
+        return jsonify({"error": "email and password required"}), 400
+
+    # step 2: duplicate check
+    if Auth_Users.query.filter_by(email=data["email"]).first():
+        return jsonify({"error": "email already registered"}), 409
+
+    # step 3: hash pw
+    pw_hash = generate_password_hash(data["password"])
+
+    # step 4: insert
+    new_user = Auth_Users(email=data["email"], password_hash=pw_hash)
+    db.session.add(new_user)
+    db.session.commit()
+
+    # step 5: reply (uses AuthUser.to_dict() from models.py)
+    return jsonify(new_user.to_dict()), 201
+
+
+@main.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or request.form.to_dict()
+    email = data.get("email") if data else None
+    password = data.get("password") if data else None
+
+    if not email or not password:
+        return jsonify({"error": "email and password required"}), 400
+
+    user = Auth_Users.query.filter_by(email=email).first()
+    if user is None or not check_password_hash(user.password_hash, password):
+        return jsonify({"error": "invalid credentials"}), 401
+
+    access_token = create_access_token(identity=user.id)
+
+    return (
+        jsonify(
+            {
+                "access_token": access_token,
+                "user": user.to_dict(),  # safe public info only
+            }
+        ),
+        200,
+    )
