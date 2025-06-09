@@ -25,6 +25,9 @@ export default function SalesmanReportScreen() {
   const [selectedSalesman, setSelectedSalesman] = useState<
     string | undefined
   >();
+  const [selectedActivity, setSelectedActivity] = useState<
+    string | undefined
+  >();
   const [selectedRegion, setSelectedRegion] = useState<string | undefined>();
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -43,6 +46,7 @@ export default function SalesmanReportScreen() {
     "Date Visited",
     "Sales Name",
     "Activity",
+    "Items Sold",
     "Revenue",
     "Notes",
   ];
@@ -56,6 +60,7 @@ export default function SalesmanReportScreen() {
       : "",
     item.SalesName,
     item.Activity,
+    item.Sales,
     item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
     item.Notes,
   ]);
@@ -85,6 +90,7 @@ export default function SalesmanReportScreen() {
     let params = new URLSearchParams();
     if (selectedSalesman) params.append("sales", selectedSalesman);
     if (selectedRegion) params.append("region", selectedRegion);
+    if (selectedActivity) params.append("activity", selectedActivity);
     if (fromDate) params.append("from", fromDate);
     if (toDate) params.append("to", toDate);
 
@@ -115,6 +121,12 @@ export default function SalesmanReportScreen() {
             selected={selectedRegion}
             setSelected={setSelectedRegion}
             disabled={!selectedSalesman} // ✅
+          />
+          <Dropdown
+            label="Activity"
+            options={["Sale", "Problem", "Relation"]}
+            selected={selectedActivity}
+            setSelected={setSelectedActivity}
           />
           <DatePickerInput
             label="From"
@@ -166,8 +178,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     flex: 1,
     flexDirection: "row",
-    gap: 40,
-    alignItems: "center",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
     zIndex: 1000,
   },
   dropdown: {

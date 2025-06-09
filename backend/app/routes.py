@@ -455,6 +455,7 @@ from datetime import datetime
 from . import db
 from sqlalchemy.sql import exists
 from sqlalchemy.exc import OperationalError
+import re
 
 main = Blueprint("main", __name__)
 
@@ -569,6 +570,8 @@ def get_filtered_visits_cross_db():
             visit_data["ClientType"] = c.ClientType if c else None
             visit_data["InvoiceAmount"] = float(
                 invoice.Amount) if invoice else None
+            # ✅ Ensure Sales is returned
+            visit_data["Sales"] = v.Sales
 
             if client_region and visit_data["ClientReg"] != client_region:
                 continue
@@ -595,6 +598,7 @@ def create_visit():
         Notes = data.get("Notes")
         ProblemNotes = data.get("ProblemNotes")
         Resolved = data.get("Resolved")
+        Sales = data.get("Sales") if Activity == "Sale" else None
         visit_datetime_str = data.get("VisitDateTime")
 
         if not all([SalesName, ClientId, Activity, Notes]):
@@ -610,7 +614,8 @@ def create_visit():
             Notes=Notes,
             ProblemNotes=ProblemNotes,
             Resolved=Resolved,
-            VisitDateTime=VisitDateTime
+            VisitDateTime=VisitDateTime,
+            Sales=Sales
         )
 
         session = Session(db.get_engine(current_app, bind='touchdb'))
@@ -1031,7 +1036,7 @@ def dialogflow_webhook():
 
                 if exists_query:
                     return jsonify({
-                        'fulfillmentText': f"พบลูกค้า {clientId} ในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา (เท่านั้น)",
+                        'fulfillmentText': f"พบลูกค้า {clientId} ในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา\n(เท่านั้น)",
                         'outputContexts': [
                             {
                                 "name": f"{req['session']}/contexts/awaiting_activity_type",
@@ -1095,6 +1100,21 @@ def dialogflow_webhook():
                         }
                     ]
                 })
+            elif activityType == 'ขาย':
+                return jsonify({
+                    'fulfillmentText': "กรุณาระบุของที่คุณขายในรูปแบบนี้(เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\nเช่น สินค้าA:10, สินค้าB:50",
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_sales_detail",
+                            "lifespanCount": 5,
+                            "parameters": {
+                                "clientId": clientId,
+                                "activityType": activityType,
+                                "activityNote": activity_note
+                            }
+                        }
+                    ]
+                })
             else:
                 return jsonify({
                     'fulfillmentText': (
@@ -1116,6 +1136,61 @@ def dialogflow_webhook():
                         }
                     ]
                 })
+
+        elif intent == "ProvideSalesDetail":
+            sales_detail = req.get('queryResult', {}).get(
+                'parameters', {}).get('sales_detail')
+            clientId = get_param_from_contexts("clientId")
+            activityType = get_param_from_contexts("activityType")
+            activityNote = get_param_from_contexts("activityNote")
+
+            # Validate sales_detail format
+            pattern = r'^(\s*\S+\s*:\s*\d+\s*)(,\s*\S+\s*:\s*\d+\s*)*$'
+            if not sales_detail or not re.match(pattern, sales_detail):
+                return jsonify({
+                    'fulfillmentText': (
+                        "❌ รูปแบบข้อมูลไม่ถูกต้องครับ\n"
+                        "กรุณาระบุของที่คุณขายในรูปแบบนี้ (เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\n"
+                        "ตัวอย่างเช่น: สินค้าA:10, สินค้าB:50"
+                    ),
+                    'outputContexts': [
+                        {
+                            "name": f"{req['session']}/contexts/awaiting_sales_detail",
+                            "lifespanCount": 5,
+                            "parameters": {
+                                "clientId": clientId,
+                                "activityType": activityType,
+                                "activityNote": activityNote
+                            }
+                        }
+                    ]
+                })
+
+            # If valid, continue
+            confirmation_text = (
+                f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
+                f"📄 รหัสลูกค้า: {clientId}\n"
+                f"📌 กิจกรรม: {activityType}\n"
+                f"📝 หมายเหตุ: {activityNote}\n"
+                f"🛍️ รายการขาย: {sales_detail}\n"
+                "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
+            )
+
+            return jsonify({
+                'fulfillmentText': confirmation_text,
+                'outputContexts': [
+                    {
+                        "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
+                        "lifespanCount": 5,
+                        "parameters": {
+                            "clientId": clientId,
+                            "activityType": activityType,
+                            "activityNote": activityNote,
+                            "salesDetail": sales_detail
+                        }
+                    }
+                ]
+            })
 
         elif intent == "ProvideProblemNote":
             problem_note = req.get('queryResult', {}).get(
@@ -1156,6 +1231,24 @@ def dialogflow_webhook():
             activityType = get_param_from_contexts("activityType")
             activityNote = get_param_from_contexts("activityNote")
             problemNote = get_param_from_contexts("problemNote")
+            raw_sales_detail = get_param_from_contexts("salesDetail")
+
+            def parse_sales_detail(text):
+                try:
+                    sales_dict = {}
+                    if not text:
+                        return None
+                    items = text.split(",")
+                    for item in items:
+                        name, amount = item.strip().split(":")
+                        sales_dict[name.strip()] = int(amount.strip())
+                    return sales_dict
+                except Exception as e:
+                    print("❌ Error parsing sales detail:", e)
+                    return None
+
+            sales_json = parse_sales_detail(raw_sales_detail)
+
             visit_datetime = datetime.now()
 
             # Map Thai activity to internal codes
@@ -1183,7 +1276,8 @@ def dialogflow_webhook():
                     Notes=activityNote,
                     ProblemNotes=problemNote,
                     Resolved=resolved,
-                    VisitDateTime=visit_datetime
+                    VisitDateTime=visit_datetime,
+                    Sales=sales_json
                 )
 
                 session.add(new_visit)
