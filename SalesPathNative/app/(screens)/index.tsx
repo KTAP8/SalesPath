@@ -1,5 +1,5 @@
-~import { useEffect, useState } from "react";
-import {View,Text, ScrollView,StyleSheet,Modal,Pressable, } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, StyleSheet, Modal, Pressable, } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";
@@ -166,10 +166,10 @@ export default function SalesmenScreen() {
         sale == true
           ? "Sale"
           : custRelation == true
-          ? "Relation"
-          : probReport == true
-          ? "Problem"
-          : "",
+            ? "Relation"
+            : probReport == true
+              ? "Problem"
+              : "",
       Notes: note,
       ProblemNotes: pnote,
       Resolved: 0,
@@ -189,9 +189,8 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${
-              error.response?.data?.message || "No server response"
-            }`
+          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
+          }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostResult(message);
@@ -224,9 +223,8 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${
-              error.response?.data?.message || "No server response"
-            }`
+          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
+          }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostNewResult(message);
