@@ -1,5 +1,6 @@
 // components/Sidebar.tsx
-
+import { AuthContext } from "@/contexts/authContext";
+import { useContext } from 'react'
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import {
   NotebookPen,
@@ -17,6 +18,8 @@ import { Colors } from "@/constants/Colors";
 const Sidebar = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const {user, login, logout} = useContext(AuthContext);
+
   return (
     <View style={styles.sidebar}>
       <View style={styles.sidebarContent}>
@@ -70,7 +73,7 @@ const Sidebar = () => {
             icon={LogOut}
             label={TABS.SIGNOUT}
             active={pathname === "/Logout"}
-            onPress={() => router.push("/")}
+            onPress={() => logout()}
           />
         </Section>
       </View>

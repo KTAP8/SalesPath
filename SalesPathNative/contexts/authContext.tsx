@@ -5,6 +5,7 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
+import {router} from 'expo-router'
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode, JwtPayload } from "jwt-decode";
 import api from "../src/api";                 // ← Axios instance with interceptor
@@ -54,6 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     await AsyncStorage.removeItem("access_token");
     setUser(null);
+    router.replace('/(auth)/login');
   };
 
   /** e. useMemo so Provider only re-renders children when *user* changes */
