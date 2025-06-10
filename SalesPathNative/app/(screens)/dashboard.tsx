@@ -7,10 +7,17 @@ import OverviewItem from "@/components/dashboard/OverviewItem";
 import VisitCard from "@/components/dashboard/VisitCard";
 import SaleCard from "@/components/dashboard/SaleCard";
 import { Colors } from "@/constants/Colors";
+import { Modal, Pressable, Button, Platform } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import RNPickerSelect from "react-native-picker-select";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import DatePickerInput from "@/components/DatePicker";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
 type ClientStats = {
+  SalesId: number; // <-- Add this
   SalesName: string;
   TotalClients: number;
   VisitedClients: number;
@@ -25,6 +32,14 @@ type RevenueStats = {
 export default function DashboardScreen() {
   const [clientStats, setClientStats] = useState<ClientStats[]>([]);
   const [revenueStats, setRevenueStats] = useState<RevenueStats[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedSalesName, setSelectedSalesName] = useState<string | null>(
+    null
+  );
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
     axios
@@ -32,18 +47,64 @@ export default function DashboardScreen() {
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
-    console.log(clientStats);
-
     axios
       .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`)
       .then((res) => setRevenueStats(res.data))
       .catch((err) => console.error("Revenue error:", err));
   }, []);
 
+  const handleGeneratePDF = async () => {
+    const selectedSales = clientStats.find(
+      (c) => c.SalesName === selectedSalesName
+    );
+    if (!selectedSales) return alert("Please select a salesman");
+
+    const [year, month] = selectedMonth.split("-");
+
+    const url = `${API_URL}/api/sales-report?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+
+    try {
+      const response = await axios.get(url, { responseType: "blob" });
+      if (Platform.OS === "web") {
+        const blob = new Blob([response.data], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `sales_report_${year}_${month}.pdf`;
+        link.click();
+      } else {
+        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.pdf`;
+        await FileSystem.writeAsStringAsync(path, response.data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await Sharing.shareAsync(path);
+      }
+    } catch (error) {
+      console.error("Download error:", error);
+      alert(`Failed to generate PDF. ${error}`);
+    }
+  };
+
   return (
     <LayoutWithSidebar>
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Dashboard</Text>
+
+        {/* Button to open modal */}
+        <Pressable
+          style={{
+            backgroundColor: Colors.primaryBlue,
+            padding: 10,
+            borderRadius: 10,
+            marginBottom: 20,
+          }}
+          onPress={() => setModalVisible(true)}
+        >
+          <Text
+            style={{ color: "white", textAlign: "center", fontWeight: "bold" }}
+          >
+            Generate Sales Report (PDF)
+          </Text>
+        </Pressable>
 
         {/* Overview counters */}
         <View style={styles.overviewContainer}>
@@ -63,7 +124,7 @@ export default function DashboardScreen() {
           />
         </View>
 
-        {/* Visit Overview */}
+        {/* Visit and Sale Cards */}
         <Text style={styles.sectionTitle}>Visits Overview</Text>
         <ScrollView horizontal style={styles.cardRow}>
           {clientStats.map((item, index) => (
@@ -71,7 +132,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* Sale Overview */}
         <Text style={styles.sectionTitle}>Sale Overview</Text>
         <ScrollView horizontal style={styles.cardRow}>
           {revenueStats.map((item, index) => (
@@ -79,6 +139,62 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
       </ScrollView>
+
+      {/* Modal */}
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              width: "90%",
+              backgroundColor: "white",
+              padding: 20,
+              borderRadius: 10,
+            }}
+          >
+            <Text
+              style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10 }}
+            >
+              Generate PDF Report
+            </Text>
+
+            <RNPickerSelect
+              placeholder={{ label: "Select Salesman", value: null }}
+              onValueChange={(value) => setSelectedSalesName(value)}
+              items={clientStats.map((c) => ({
+                label: c.SalesName,
+                value: c.SalesName,
+              }))}
+            />
+
+            <DatePickerInput
+              label="Select Month"
+              value={selectedMonth}
+              setValue={setSelectedMonth}
+            />
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 20,
+              }}
+            >
+              <Button
+                title="Cancel"
+                color="grey"
+                onPress={() => setModalVisible(false)}
+              />
+              <Button title="Generate" onPress={handleGeneratePDF} />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutWithSidebar>
   );
 }

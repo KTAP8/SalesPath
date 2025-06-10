@@ -448,7 +448,7 @@ from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 from sqlalchemy import tuple_
 from .models import Visit, Client, Invoice, Prospect, SalesMan
-from flask import request, jsonify, Blueprint, current_app
+from flask import request, jsonify, Blueprint, current_app, make_response
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, text
 from datetime import datetime
@@ -456,6 +456,18 @@ from . import db
 from sqlalchemy.sql import exists
 from sqlalchemy.exc import OperationalError
 import re
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from io import BytesIO
+import calendar
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
+
+from decimal import Decimal
 
 main = Blueprint("main", __name__)
 
@@ -839,16 +851,18 @@ def get_client_counts():
 
         # Step 2: Fetch all salesmen and their total clients from chaluck
         query = session_chaluck.query(
+            SalesMan.SalesId,                      # <-- Added
             SalesMan.SalesName,
             func.count(Client.ClientId).label("TotalClients")
         ).outerjoin(
             Client, Client.SalesId == SalesMan.SalesId
-        ).group_by(SalesMan.SalesName)
+        ).group_by(SalesMan.SalesId, SalesMan.SalesName)  # <-- Group by SalesId too
 
         result = []
         for row in query.all():
             visited = visited_map.get(row.SalesName, 0)
             result.append({
+                "SalesId": row.SalesId,             # <-- Added
                 "SalesName": row.SalesName,
                 "TotalClients": row.TotalClients,
                 "VisitedClients": visited
@@ -857,6 +871,220 @@ def get_client_counts():
         session_touchdb.close()
         session_chaluck.close()
         return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+font_path = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), '..', 'static', 'fonts', 'THSarabunNew.ttf'
+))
+pdfmetrics.registerFont(TTFont('THSarabun', font_path))
+
+
+@main.route('/api/sales-report', methods=['GET'])
+def generate_sales_report():
+    try:
+        # Get parameters from query string
+        salesman_id = request.args.get('salesman_id', type=int)
+        month_str = request.args.get('month')  # Expected format: YYYY-MM
+
+        if not salesman_id or not month_str:
+            return jsonify({"error": "salesman_id and month (YYYY-MM) are required"}), 400
+
+        try:
+            year, month = map(int, month_str.split('-'))
+            if not (1 <= month <= 12):
+                raise ValueError
+        except ValueError:
+            return jsonify({"error": "Invalid month format. Use YYYY-MM"}), 400
+
+        # Initialize sessions
+        touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
+        chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
+
+        try:
+            # Get the salesman
+            salesman = chaluck_session.query(
+                SalesMan).filter_by(SalesId=salesman_id).first()
+            if not salesman:
+                return jsonify({"error": "Salesman not found"}), 404
+
+            # Calculate date range for the month
+            _, last_day = calendar.monthrange(year, month)
+            start_date = datetime(year, month, 1)
+            end_date = datetime(year, month, last_day, 23, 59, 59)
+
+            print(start_date, end_date)
+
+            # Query 1: Total clients visited in the month
+            visits = touchdb_session.query(Visit).filter(
+                Visit.SalesName == salesman.SalesName,
+                Visit.VisitDateTime >= start_date,
+                Visit.VisitDateTime <= end_date
+            ).all()
+            client_ids_visited = {visit.ClientId for visit in visits}
+            total_clients_visited = len(client_ids_visited)
+
+            # Query 2: Visits with sales
+            sales_visits = touchdb_session.query(Visit).filter(
+                Visit.SalesName == salesman.SalesName,
+                Visit.VisitDateTime >= start_date,
+                Visit.VisitDateTime <= end_date,
+                Visit.Activity.ilike('sale')
+            ).count()
+
+            # Query 3: Revenue from invoices
+            revenue = chaluck_session.query(func.sum(Invoice.Amount)).join(
+                Client, Invoice.ClientId == Client.ClientId
+            ).filter(
+                Client.SalesId == salesman_id,
+                Invoice.TransactionDate >= start_date,
+                Invoice.TransactionDate <= end_date
+            ).scalar() or 0.0
+
+            revenue = revenue / Decimal("1.07")
+
+            # Query 4: Clients with no sales
+            clients_no_sales = chaluck_session.query(Client).outerjoin(
+                Invoice, Client.ClientId == Invoice.ClientId
+            ).filter(
+                Client.SalesId == salesman_id,
+                Invoice.InvoiceId.is_(None)
+            ).all()
+
+            # Query 5: Clients not visited
+            # Step 1: Get all visited client IDs for this salesman from touchdb
+            visited_clients = touchdb_session.query(Visit.ClientId).filter(
+                Visit.SalesName == salesman.SalesName
+            ).distinct().all()
+            visited_client_ids = {row[0] for row in visited_clients}
+
+            # Step 2: Get all clients from chaluck for this salesman
+            all_clients = chaluck_session.query(Client).filter(
+                Client.SalesId == salesman_id
+            ).all()
+
+            # Step 3: Clients not visited = those whose ID is not in visited_client_ids
+            clients_no_visits = [
+                client for client in all_clients if client.ClientId not in visited_client_ids]
+
+            # Generate PDF
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            styles = getSampleStyleSheet()
+            styles.add(ParagraphStyle(
+                name='ThaiTitle', fontName='THSarabun', fontSize=24, leading=28, alignment=1))
+            styles.add(ParagraphStyle(name='ThaiHeading',
+                       fontName='THSarabun', fontSize=18, leading=22))
+            styles.add(ParagraphStyle(name='ThaiNormal',
+                       fontName='THSarabun', fontSize=14, leading=18))
+            elements = []
+
+            # Title
+            elements.append(Paragraph(
+                f"รายงานยอดขาย {salesman.SalesName} - {year}-{month:02d}", styles['ThaiTitle']
+            ))
+
+            elements.append(Spacer(1, 12))
+            elements.append(Paragraph("สรุปรายงาน", styles['ThaiHeading']))
+
+            # Summary
+            elements.append(Paragraph("Summary", styles['Heading2']))
+            summary_data = [
+                ["Metric", "Value"],
+                ["Total Clients Visited", str(total_clients_visited)],
+                ["Visits Resulting in Sales", str(sales_visits)],
+                ["Total Revenue", f"${revenue:,.2f}"]
+            ]
+            summary_table = Table(summary_data)
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                # ✅ Apply to all cells
+                ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(summary_table)
+            elements.append(Spacer(1, 12))
+
+            # Clients with No Sales
+            elements.append(
+                Paragraph("Clients with No Sales", styles['Heading2']))
+            no_sales_data = [["Client ID", "Client Region", "Client Sub-Region"]] + [
+                [client.ClientId, client.ClientReg or "N/A",
+                    client.ClientSubReg or "N/A"]
+                for client in clients_no_sales
+            ]
+            if len(no_sales_data) == 1:
+                no_sales_data.append(["-", "-", "-"])
+            no_sales_table = Table(no_sales_data)
+            no_sales_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                # ✅ Apply to all cells
+                ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(no_sales_table)
+            elements.append(Spacer(1, 12))
+
+            # Clients Not Visited
+            elements.append(
+                Paragraph("Clients Not Visited", styles['Heading2']))
+            no_visits_data = [["Client ID", "Client Region", "Client Sub-Region"]] + [
+                [client.ClientId, client.ClientReg or "N/A",
+                    client.ClientSubReg or "N/A"]
+                for client in clients_no_visits
+            ]
+            if len(no_visits_data) == 1:
+                no_visits_data.append(["-", "-", "-"])
+            no_visits_table = Table(no_visits_data)
+            no_visits_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                # ✅ Apply to all cells
+                ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(no_visits_table)
+
+            # Optional footer with page numbers
+            def footer(canvas, doc):
+                canvas.saveState()
+                canvas.setFont('Helvetica', 9)
+                canvas.drawString(30, 20, f"Page {doc.page}")
+                canvas.restoreState()
+
+            # Build PDF
+            doc.build(elements, onFirstPage=footer, onLaterPages=footer)
+            pdf = buffer.getvalue()
+            buffer.close()
+
+            # Create response
+            response = make_response(pdf)
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers[
+                'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.pdf'
+            return response
+
+        finally:
+            touchdb_session.close()
+            chaluck_session.close()
 
     except Exception as e:
         import traceback
