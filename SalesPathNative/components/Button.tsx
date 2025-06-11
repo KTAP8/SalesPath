@@ -6,18 +6,29 @@ type ButtonProps = {
   onPress: () => void;
   disabled?: boolean;
   size: "S" | "M" | "L";
+  color?: string; // ✅ Optional color
 };
 
-const Button = ({ label, onPress, disabled = false, size }: ButtonProps) => {
+const Button = ({
+  label,
+  onPress,
+  disabled = false,
+  size,
+  color,
+}: ButtonProps) => {
+  const backgroundColor = disabled
+    ? styles.disabledButton.backgroundColor
+    : color || Colors.primaryGreen;
+
   return (
     <Pressable
       onPress={onPress}
       style={[
         styles.button,
+        { backgroundColor }, // ✅ Inline background color override
         size === "S" && styles.smallButton,
         size === "M" && styles.mediumButton,
         size === "L" && styles.largeButton,
-        disabled && styles.disabledButton,
       ]}
       disabled={disabled}
     >
@@ -39,7 +50,6 @@ export default Button;
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: Colors.primaryGreen,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",

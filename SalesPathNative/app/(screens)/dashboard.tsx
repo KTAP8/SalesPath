@@ -7,12 +7,14 @@ import OverviewItem from "@/components/dashboard/OverviewItem";
 import VisitCard from "@/components/dashboard/VisitCard";
 import SaleCard from "@/components/dashboard/SaleCard";
 import { Colors } from "@/constants/Colors";
-import { Modal, Pressable, Button, Platform } from "react-native";
+import { Modal, Pressable, Platform } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import RNPickerSelect from "react-native-picker-select";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import DatePickerInput from "@/components/DatePicker";
+import Button from "@/components/Button";
+import DropdownValue from "@/components/dropdown_value_label";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -88,11 +90,10 @@ export default function DashboardScreen() {
     <LayoutWithSidebar>
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Dashboard</Text>
-
         {/* Button to open modal */}
         <Pressable
           style={{
-            backgroundColor: Colors.primaryBlue,
+            backgroundColor: Colors.primaryGreen,
             padding: 10,
             borderRadius: 10,
             marginBottom: 20,
@@ -144,40 +145,57 @@ export default function DashboardScreen() {
       <Modal visible={modalVisible} transparent animationType="fade">
         <View
           style={{
-            flex: 1,
             backgroundColor: "rgba(0,0,0,0.5)",
             justifyContent: "center",
             alignItems: "center",
+            height: "100%",
+            padding: 50,
           }}
         >
           <View
             style={{
-              width: "90%",
+              width: "50%",
               backgroundColor: "white",
-              padding: 20,
               borderRadius: 10,
+              flex: 1,
+              padding: 50,
+              gap: 20,
+              justifyContent: "space-between",
             }}
           >
-            <Text
-              style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10 }}
-            >
-              Generate PDF Report
-            </Text>
+            <View>
+              <Text
+                style={{
+                  fontSize: 30,
+                  fontWeight: "bold",
+                  marginBottom: 10,
+                  color: Colors.primaryBlue,
+                  fontFamily: "Lexend",
+                }}
+              >
+                Generate PDF Report
+              </Text>
+              <View style={{ gap: 30 }}>
+                <View style={{ gap: 10 }}>
+                  <DropdownValue
+                    label="Salesman"
+                    selected={selectedSalesName ?? undefined} // ✅ Convert null to undefined
+                    setSelected={setSelectedSalesName}
+                    options={clientStats.map((c) => ({
+                      label: c.SalesName,
+                      value: c.SalesName,
+                    }))}
+                    placeholder="Select Salesman"
+                  />
+                </View>
 
-            <RNPickerSelect
-              placeholder={{ label: "Select Salesman", value: null }}
-              onValueChange={(value) => setSelectedSalesName(value)}
-              items={clientStats.map((c) => ({
-                label: c.SalesName,
-                value: c.SalesName,
-              }))}
-            />
-
-            <DatePickerInput
-              label="Select Month"
-              value={selectedMonth}
-              setValue={setSelectedMonth}
-            />
+                <DatePickerInput
+                  label="Select Month"
+                  value={selectedMonth}
+                  setValue={setSelectedMonth}
+                />
+              </View>
+            </View>
             <View
               style={{
                 flexDirection: "row",
@@ -186,11 +204,12 @@ export default function DashboardScreen() {
               }}
             >
               <Button
-                title="Cancel"
-                color="grey"
+                label="Cancel"
                 onPress={() => setModalVisible(false)}
+                size="M"
+                color={Colors.error}
               />
-              <Button title="Generate" onPress={handleGeneratePDF} />
+              <Button label="Generate" onPress={handleGeneratePDF} size="M" />
             </View>
           </View>
         </View>

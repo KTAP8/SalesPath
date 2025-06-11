@@ -991,8 +991,6 @@ def generate_sales_report():
             elements.append(Spacer(1, 12))
             elements.append(Paragraph("สรุปรายงาน", styles['ThaiHeading']))
 
-            # Summary
-            elements.append(Paragraph("Summary", styles['Heading2']))
             summary_data = [
                 ["Metric", "Value"],
                 ["Total Clients Visited", str(total_clients_visited)],
@@ -1006,8 +1004,9 @@ def generate_sales_report():
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 # ✅ Apply to all cells
                 ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, -1), 15),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
@@ -1016,8 +1015,8 @@ def generate_sales_report():
 
             # Clients with No Sales
             elements.append(
-                Paragraph("Clients with No Sales", styles['Heading2']))
-            no_sales_data = [["Client ID", "Client Region", "Client Sub-Region"]] + [
+                Paragraph("ลูกค้าที่ไม่มียอดขาย", styles['ThaiHeading']))
+            no_sales_data = [["Client ID", "จังหวัด", "เขต/ตำบล"]] + [
                 [client.ClientId, client.ClientReg or "N/A",
                     client.ClientSubReg or "N/A"]
                 for client in clients_no_sales
@@ -1031,8 +1030,9 @@ def generate_sales_report():
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 # ✅ Apply to all cells
                 ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, -1), 15),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
@@ -1041,8 +1041,8 @@ def generate_sales_report():
 
             # Clients Not Visited
             elements.append(
-                Paragraph("Clients Not Visited", styles['Heading2']))
-            no_visits_data = [["Client ID", "Client Region", "Client Sub-Region"]] + [
+                Paragraph("ลูกค้าที่ไม่ได้ไปหา", styles['ThaiHeading']))
+            no_visits_data = [["Client ID", "จังหวัด", "เขต/ตำบล"]] + [
                 [client.ClientId, client.ClientReg or "N/A",
                     client.ClientSubReg or "N/A"]
                 for client in clients_no_visits
@@ -1056,12 +1056,44 @@ def generate_sales_report():
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 # ✅ Apply to all cells
                 ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('FONTSIZE', (0, 0), (-1, -1), 15),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
             elements.append(no_visits_table)
+
+            # Clients Visited This Month
+            elements.append(Spacer(1, 12))
+            elements.append(
+                Paragraph("ลูกค้าที่เข้าพบในเดือนนี้", styles['ThaiHeading']))
+
+            visited_data = [["Client ID", "วันที่เข้าพบ", "กิจกรรม", "หมายเหตุ"]] + [
+                [
+                    visit.ClientId or "-",
+                    visit.VisitDateTime.strftime("%Y-%m-%d"),
+                    visit.Activity or "-",
+                    visit.Notes or "-"
+                ]
+                for visit in visits
+            ]
+            if len(visited_data) == 1:
+                visited_data.append(["-", "-", "-", "-"])
+
+            visited_table = Table(visited_data, colWidths=[80, 80, 100, 250])
+            visited_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, -1), 'THSarabun'),
+                ('FONTSIZE', (0, 0), (-1, -1), 15),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(visited_table)
 
             # Optional footer with page numbers
             def footer(canvas, doc):
