@@ -86,26 +86,74 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleGenerateCSV = async () => {
+    const selectedSales = clientStats.find(
+      (c) => c.SalesName === selectedSalesName
+    );
+    if (!selectedSales) return alert("Please select a salesman");
+
+    const [year, month] = selectedMonth.split("-");
+
+    const url = `${API_URL}/api/sales-report-csv?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+
+    try {
+      const response = await axios.get(url, { responseType: "blob" });
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([response.data], {
+          type: "text/csv;charset=utf-8",
+        });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `sales_report_${year}_${month}.csv`;
+        link.click();
+      } else {
+        const base64Data = await response.data.text(); // Convert blob to string
+        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.csv`;
+        await FileSystem.writeAsStringAsync(path, base64Data, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        await Sharing.shareAsync(path);
+      }
+    } catch (error) {
+      console.error("CSV download error:", error);
+      alert(`Failed to generate CSV. ${error}`);
+    }
+  };
+
   return (
     <LayoutWithSidebar>
       <ScrollView style={styles.container}>
-        <Text style={styles.title}>Dashboard</Text>
-        {/* Button to open modal */}
-        <Pressable
+        <View
           style={{
-            backgroundColor: Colors.primaryGreen,
-            padding: 10,
-            borderRadius: 10,
-            marginBottom: 20,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
-          onPress={() => setModalVisible(true)}
         >
-          <Text
-            style={{ color: "white", textAlign: "center", fontWeight: "bold" }}
+          <Text style={styles.title}>Dashboard</Text>
+          {/* Button to open modal */}
+          <Pressable
+            style={{
+              backgroundColor: Colors.primaryGreen,
+              padding: 10,
+              borderRadius: 10,
+              marginBottom: 20,
+              paddingHorizontal: 20,
+            }}
+            onPress={() => setModalVisible(true)}
           >
-            Generate Sales Report (PDF)
-          </Text>
-        </Pressable>
+            <Text
+              style={{
+                color: "white",
+                textAlign: "center",
+                fontWeight: "bold",
+              }}
+            >
+              Generate Sales Report
+            </Text>
+          </Pressable>
+        </View>
 
         {/* Overview counters */}
         <View style={styles.overviewContainer}>
@@ -209,7 +257,18 @@ export default function DashboardScreen() {
                 size="M"
                 color={Colors.error}
               />
-              <Button label="Generate" onPress={handleGeneratePDF} size="M" />
+              <Button
+                label="Generate PDF"
+                onPress={handleGeneratePDF}
+                size="M"
+                color={Colors.primaryBlue}
+              />
+              <Button
+                label="Generate CSV"
+                onPress={handleGenerateCSV}
+                size="M"
+                color={Colors.primaryGreen}
+              />
             </View>
           </View>
         </View>

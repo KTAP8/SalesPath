@@ -466,8 +466,11 @@ import calendar
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
+import csv
+from flask import Response
 
 from decimal import Decimal
+from io import StringIO
 
 main = Blueprint("main", __name__)
 
@@ -1112,6 +1115,169 @@ def generate_sales_report():
             response.headers['Content-Type'] = 'application/pdf'
             response.headers[
                 'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.pdf'
+            return response
+
+        finally:
+            touchdb_session.close()
+            chaluck_session.close()
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@main.route('/api/sales-report-csv', methods=['GET'])
+def export_sales_report_csv():
+    try:
+        salesman_id = request.args.get('salesman_id', type=int)
+        month_str = request.args.get('month')
+
+        if not salesman_id or not month_str:
+            return jsonify({"error": "salesman_id and month (YYYY-MM) are required"}), 400
+
+        try:
+            year, month = map(int, month_str.split('-'))
+            if not (1 <= month <= 12):
+                raise ValueError
+        except ValueError:
+            return jsonify({"error": "Invalid month format. Use YYYY-MM"}), 400
+
+        touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
+        chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
+
+        try:
+            salesman = chaluck_session.query(
+                SalesMan).filter_by(SalesId=salesman_id).first()
+            if not salesman:
+                return jsonify({"error": "Salesman not found"}), 404
+
+            _, last_day = calendar.monthrange(year, month)
+            start_date = datetime(year, month, 1)
+            end_date = datetime(year, month, last_day, 23, 59, 59)
+
+            # Query 1: Total clients visited
+            visits = touchdb_session.query(Visit).filter(
+                Visit.SalesName == salesman.SalesName,
+                Visit.VisitDateTime >= start_date,
+                Visit.VisitDateTime <= end_date
+            ).all()
+            client_ids_visited = {visit.ClientId for visit in visits}
+            total_clients_visited = len(client_ids_visited)
+
+            # Query 2: Sales visits
+            sales_visits = touchdb_session.query(Visit).filter(
+                Visit.SalesName == salesman.SalesName,
+                Visit.VisitDateTime >= start_date,
+                Visit.VisitDateTime <= end_date,
+                Visit.Activity.ilike('sale')
+            ).count()
+
+            # Query 3: Revenue
+            revenue = chaluck_session.query(func.sum(Invoice.Amount)).join(
+                Client, Invoice.ClientId == Client.ClientId
+            ).filter(
+                Client.SalesId == salesman_id,
+                Invoice.TransactionDate >= start_date,
+                Invoice.TransactionDate <= end_date
+            ).scalar() or 0.0
+
+            revenue = revenue / Decimal("1.07")
+
+            # Query 4: Clients with no sales
+            clients_no_sales = chaluck_session.query(Client).outerjoin(
+                Invoice, Client.ClientId == Invoice.ClientId
+            ).filter(
+                Client.SalesId == salesman_id,
+                Invoice.InvoiceId.is_(None)
+            ).all()
+
+            # Query 5: Clients not visited
+            visited_client_ids = {row[0] for row in touchdb_session.query(
+                Visit.ClientId).filter(
+                    Visit.SalesName == salesman.SalesName).distinct().all()}
+
+            all_clients = chaluck_session.query(Client).filter(
+                Client.SalesId == salesman_id).all()
+
+            clients_no_visits = [
+                c for c in all_clients if c.ClientId not in visited_client_ids]
+
+            # Build each table as list of rows
+            summary_rows = [
+                ["Metric", "Value"],
+                ["Total Clients Visited", total_clients_visited],
+                ["Visits Resulting in Sales", sales_visits],
+                ["Total Revenue (excl. VAT)", f"{revenue:,.2f}"]
+            ]
+
+            no_sales_rows = [["Client ID", "จังหวัด", "เขต/ตำบล"]]
+            for c in clients_no_sales:
+                no_sales_rows.append(
+                    [c.ClientId, c.ClientReg or "N/A", c.ClientSubReg or "N/A"])
+
+            not_visited_rows = [["Client ID", "จังหวัด", "เขต/ตำบล"]]
+            for c in clients_no_visits:
+                not_visited_rows.append(
+                    [c.ClientId, c.ClientReg or "N/A", c.ClientSubReg or "N/A"])
+
+            visited_rows = [
+                ["Client ID", "วันที่เข้าพบ", "กิจกรรม", "หมายเหตุ"]]
+            for v in visits:
+                visited_rows.append([
+                    v.ClientId or "-",
+                    v.VisitDateTime.strftime("%Y-%m-%d"),
+                    v.Activity or "-",
+                    v.Notes or "-"
+                ])
+
+            # Pad shorter tables so all have the same number of rows
+            max_len = max(len(summary_rows), len(no_sales_rows),
+                          len(not_visited_rows), len(visited_rows))
+
+            def pad_rows(rows, width):
+                while len(rows) < max_len:
+                    rows.append([""] * width)
+                return rows
+
+            summary_rows = pad_rows(summary_rows, 2)
+            no_sales_rows = pad_rows(no_sales_rows, 3)
+            not_visited_rows = pad_rows(not_visited_rows, 3)
+            visited_rows = pad_rows(visited_rows, 4)
+
+            # Merge horizontally row by row
+            final_rows = []
+            for i in range(max_len):
+                final_rows.append(
+                    summary_rows[i] + [""] + no_sales_rows[i] + [""] +
+                    not_visited_rows[i] + [""] + visited_rows[i]
+                )
+
+            # Add the two rows above
+            title_row = [f"{year}-{month:02d}_{salesman_id}_report"]
+            section_titles = (
+                ["Summary", ""] + [""] +
+                ["No Sales"] + [""] * 3 +
+                ["Not Visited"] + [""] * 3 +
+                ["Visited"]
+            )
+            final_rows.insert(0, section_titles)
+            final_rows.insert(0, title_row)
+
+            # Write to CSV
+            output = StringIO()
+            writer = csv.writer(output)
+            for row in final_rows:
+                writer.writerow(row)
+
+            csv_data = output.getvalue()
+            output.close()
+
+            response = make_response(csv_data)
+            response.headers[
+                'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.csv'
+            # Important for Thai support in Excel
+            response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
             return response
 
         finally:
