@@ -47,7 +47,7 @@ export default function SalesmanReportScreen() {
     "Sales Name",
     "Activity",
     "Items Sold",
-    "Revenue",
+    // "Revenue",
     "Notes",
   ];
 
@@ -60,8 +60,8 @@ export default function SalesmanReportScreen() {
       : "",
     item.SalesName,
     item.Activity,
-    item.Sales,
-    item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
+    item.Sales ? JSON.stringify(item.Sales) : "-",
+    // item.InvoiceAmount ? `${item.InvoiceAmount}฿` : "-",
     item.Notes,
   ]);
 

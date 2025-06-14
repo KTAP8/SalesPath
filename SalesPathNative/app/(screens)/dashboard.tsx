@@ -44,13 +44,21 @@ export default function DashboardScreen() {
   const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .split("T")[0];
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .split("T")[0];
+
     axios
-      .get(`${API_URL}/api/clients-per-salesman?from=2025-04-01&to=2025-05-30`)
+      .get(`${API_URL}/api/clients-per-salesman?from=${firstDay}&to=${lastDay}`)
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
     axios
-      .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`)
+      .get(`${API_URL}/api/revenue?from=${firstDay}&to=${lastDay}`)
       .then((res) => setRevenueStats(res.data))
       .catch((err) => console.error("Revenue error:", err));
   }, []);

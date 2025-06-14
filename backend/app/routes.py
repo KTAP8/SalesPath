@@ -523,6 +523,85 @@ def get_all_clients():
         return jsonify({"error": str(e)}), 500
 
 
+# @main.route('/api/visits', methods=['GET'])
+# def get_filtered_visits_cross_db():
+#     try:
+#         from_date = request.args.get('from')
+#         to_date = request.args.get('to')
+#         sales_name = request.args.get('sales')
+#         client_region = request.args.get('region')
+#         activity = request.args.get('activity')
+#         resolved = request.args.get('resolved')
+
+#         touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
+#         chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
+
+#         # Step 1: Filter Visit records from touchdb
+#         visit_query = touchdb_session.query(Visit)
+#         if from_date:
+#             visit_query = visit_query.filter(Visit.VisitDateTime >= from_date)
+#         if to_date:
+#             visit_query = visit_query.filter(Visit.VisitDateTime <= to_date)
+#         if sales_name:
+#             visit_query = visit_query.filter(Visit.SalesName == sales_name)
+#         if activity:
+#             visit_query = visit_query.filter(Visit.Activity == activity)
+#         if resolved is not None:
+#             try:
+#                 visit_query = visit_query.filter(
+#                     Visit.Resolved == bool(int(resolved)))
+#             except ValueError:
+#                 return jsonify({"error": "Resolved must be 0 or 1"}), 400
+
+#         visits = visit_query.all()
+
+#         # Step 2: Get related clients
+#         clients = chaluck_session.query(Client).all()
+#         client_map = {c.ClientId: c for c in clients}
+
+#         # Step 3: Build (ClientId, Date) keys from visits
+#         invoice_keys = {
+#             (v.ClientId, v.VisitDateTime.date())
+#             for v in visits if v.VisitDateTime
+#         }
+
+#         # Step 4: Query only needed invoices from chaluck
+#         invoices = (
+#             chaluck_session.query(Invoice)
+#             .filter(tuple_(Invoice.ClientId, Invoice.TransactionDate).in_(invoice_keys))
+#             .all()
+#         )
+#         invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
+
+#         # Step 5: Combine into response
+#         response = []
+#         for v in visits:
+#             c = client_map.get(v.ClientId)
+#             invoice = invoice_map.get(
+#                 (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
+
+#             visit_data = v.to_dict()
+#             visit_data["ClientReg"] = c.ClientReg if c else None
+#             visit_data["ClientType"] = c.ClientType if c else None
+#             visit_data["InvoiceAmount"] = float(
+#                 invoice.Amount) if invoice else None
+#             # ✅ Ensure Sales is returned
+#             visit_data["Sales"] = v.Sales
+
+#             if client_region and visit_data["ClientReg"] != client_region:
+#                 continue
+
+#             response.append(visit_data)
+
+#         touchdb_session.close()
+#         chaluck_session.close()
+#         return jsonify(response)
+
+#     except Exception as e:
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": str(e)}), 500
+
 @main.route('/api/visits', methods=['GET'])
 def get_filtered_visits_cross_db():
     try:
@@ -536,7 +615,7 @@ def get_filtered_visits_cross_db():
         touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
         chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
 
-        # Step 1: Filter Visit records from touchdb
+        # Filter Visit records from touchdb
         visit_query = touchdb_session.query(Visit)
         if from_date:
             visit_query = visit_query.filter(Visit.VisitDateTime >= from_date)
@@ -555,38 +634,19 @@ def get_filtered_visits_cross_db():
 
         visits = visit_query.all()
 
-        # Step 2: Get related clients
+        # Get related clients
         clients = chaluck_session.query(Client).all()
         client_map = {c.ClientId: c for c in clients}
 
-        # Step 3: Build (ClientId, Date) keys from visits
-        invoice_keys = {
-            (v.ClientId, v.VisitDateTime.date())
-            for v in visits if v.VisitDateTime
-        }
-
-        # Step 4: Query only needed invoices from chaluck
-        invoices = (
-            chaluck_session.query(Invoice)
-            .filter(tuple_(Invoice.ClientId, Invoice.TransactionDate).in_(invoice_keys))
-            .all()
-        )
-        invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
-
-        # Step 5: Combine into response
+        # Combine into response
         response = []
         for v in visits:
             c = client_map.get(v.ClientId)
-            invoice = invoice_map.get(
-                (v.ClientId, v.VisitDateTime.date() if v.VisitDateTime else None))
 
             visit_data = v.to_dict()
             visit_data["ClientReg"] = c.ClientReg if c else None
             visit_data["ClientType"] = c.ClientType if c else None
-            visit_data["InvoiceAmount"] = float(
-                invoice.Amount) if invoice else None
-            # ✅ Ensure Sales is returned
-            visit_data["Sales"] = v.Sales
+            visit_data["Sales"] = v.Sales  # Keep sales info
 
             if client_region and visit_data["ClientReg"] != client_region:
                 continue
@@ -756,9 +816,7 @@ def get_invoices():
 @main.route("/api/revenue", methods=["GET"])
 def get_salesman_revenue():
     try:
-        region = request.args.get("region")
-
-        # 🗓️ Default from = 1st day of previous month, to = today
+        # 🗓️ Default date range: from first day of previous month to today
         today = datetime.today()
         default_from = (today.replace(day=1) -
                         relativedelta(months=1)).strftime("%Y-%m-%d")
@@ -767,61 +825,56 @@ def get_salesman_revenue():
         from_date = request.args.get("from") or default_from
         to_date = request.args.get("to") or default_to
 
-        session_touchdb = Session(db.get_engine(current_app, bind='touchdb'))
-        session_chaluck = Session(db.get_engine(current_app, bind='chaluck'))
+        session = Session(db.get_engine(current_app, bind='chaluck'))
 
-        # 🧾 Fetch visit data with date range
-        visits = session_touchdb.query(Visit).filter(Visit.Activity == "Sale")
-        visits = visits.filter(Visit.VisitDateTime >= from_date)
-        visits = visits.filter(Visit.VisitDateTime <= to_date)
-        visit_data = visits.all()
+        # Fetch all clients and invoices within date range
+        clients = session.query(Client).all()
+        invoices = session.query(Invoice).filter(
+            Invoice.TransactionDate >= from_date,
+            Invoice.TransactionDate <= to_date
+        ).all()
+        salesmen = session.query(SalesMan).all()
 
-        # 📄 Fetch invoice and client data, filtered by date
-        invoice_query = session_chaluck.query(Invoice)
-        invoice_query = invoice_query.filter(
-            Invoice.TransactionDate >= from_date)
-        invoice_query = invoice_query.filter(
-            Invoice.TransactionDate <= to_date)
-        invoices = invoice_query.all()
-
-        clients = session_chaluck.query(Client).all()
-
+        # Create lookup maps
         client_map = {c.ClientId: c for c in clients}
-        invoice_map = {(i.ClientId, i.TransactionDate): i for i in invoices}
+        salesman_name_map = {s.SalesId: s.SalesName for s in salesmen}
 
+        # Group revenue by SalesId
         revenue_summary = {}
 
-        for v in visit_data:
-            client = client_map.get(v.ClientId)
-            invoice = invoice_map.get(
-                (v.ClientId, v.VisitDateTime.date())
-            ) if v.VisitDateTime else None
-
-            if region and (not client or client.ClientReg != region):
+        for invoice in invoices:
+            client = client_map.get(invoice.ClientId)
+            if not client:
                 continue
 
-            name = v.SalesName
-            if name not in revenue_summary:
-                revenue_summary[name] = {"TotalRevenue": 0, "ClientIds": set()}
+            sales_id = client.SalesId
+            if sales_id not in revenue_summary:
+                revenue_summary[sales_id] = {
+                    "SalesName": salesman_name_map.get(sales_id, "Unknown"),
+                    "TotalRevenue": 0,
+                    "ClientIds": set()
+                }
 
-            if invoice:
-                revenue_summary[name]["TotalRevenue"] += float(invoice.Amount)
+            revenue_summary[sales_id]["TotalRevenue"] += float(
+                invoice.Amount or 0)
+            revenue_summary[sales_id]["ClientIds"].add(invoice.ClientId)
 
-            revenue_summary[name]["ClientIds"].add(v.ClientId)
+        session.close()
 
-        session_touchdb.close()
-        session_chaluck.close()
-
+        # Return as list of dicts
         return jsonify([
             {
-                "SalesName": name,
+                "SalesId": sid,
+                "SalesName": data["SalesName"],
                 "TotalRevenue": data["TotalRevenue"],
                 "ClientSoldCount": len(data["ClientIds"])
             }
-            for name, data in revenue_summary.items()
+            for sid, data in revenue_summary.items()
         ])
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
