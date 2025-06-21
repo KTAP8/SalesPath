@@ -1,4 +1,5 @@
 import React from 'react';
+import Button from '../components/Button'
 import {
   Modal,
   View,
@@ -33,9 +34,11 @@ const PopupModal: React.FC<PopupModalProps> = ({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>
 
-          <TouchableOpacity style={styles.button} onPress={onClose}>
-            <Text style={styles.buttonText}>OK</Text>
-          </TouchableOpacity>
+          <Button
+            label='OK'
+            size='S'
+            onPress={onClose}
+          />
         </View>
       </View>
     </Modal>

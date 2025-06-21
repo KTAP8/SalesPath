@@ -12,11 +12,14 @@ import {
 } from "react-native";
 import { Redirect, router } from "expo-router";
 import { AuthContext } from "@/contexts/authContext";
+import Ionicons from '@expo/vector-icons/Ionicons';
+
 
 export default function LoginScreen() {
   const { login } = useContext(AuthContext);          // ← call our context
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -58,13 +61,39 @@ export default function LoginScreen() {
         keyboardType="email-address"
       />
 
-      <TextInput
+      {/* <TextInput
         style={styles.input}
         placeholder="Password"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+      /> */}
+      <View style={{ width: '100%', position: 'relative' }}>
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        returnKeyType="done"
+        onSubmitEditing={handleLogin}
+        secureTextEntry={!showPassword}
       />
+      <TouchableOpacity
+        onPress={() => setShowPassword(prev => !prev)}
+        style={{
+          position: 'absolute',
+          right: 15,
+          top: 18,
+          zIndex: 1,
+        }}
+      >
+        <Ionicons
+          name={showPassword ? "eye-off" : "eye"}
+          size={22}
+          color="#1A2A36"
+        />
+      </TouchableOpacity>
+    </View>
 
       <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Log In</Text>

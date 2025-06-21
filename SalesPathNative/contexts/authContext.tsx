@@ -19,6 +19,7 @@ interface AuthContextShape {
   user: User | null;
   login: (email: string, pwd: string) => Promise<void>;
   logout: () => Promise<void>;
+  isReady: boolean | undefined;
 }
 
 /*───────────────────────────────────────────────────────────────────*/
@@ -32,17 +33,37 @@ export const AuthContext = createContext<AuthContextShape>(null as any);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   /** a. internal state  — current user object or null */
   const [user, setUser] = useState<User | null>(null);
+  const [ isReady, setIsReady] = useState<boolean | undefined>(undefined);
 
   /** b. On app launch, read token from storage & restore session */
   useEffect(() => {
-    (async () => {
-      const token = await AsyncStorage.getItem("access_token");
-      if (token && !isExpired(token)) {
-        const decoded = jwtDecode<{ sub: number; email: string } & JwtPayload>(token);
-        setUser({ id: decoded.sub, email: decoded.email });
+    const restoreSession = async () => {
+      try {
+        const token = await AsyncStorage.getItem("access_token");
+        console.log("Retrieved token:", token); // 🔍
+  
+        if (token && !isExpired(token)) {
+          const decoded = jwtDecode<{ sub: number; email: string } & JwtPayload>(token);
+          console.log("Decoded token:", decoded); // 🔍
+          
+          if (decoded?.sub) {
+            setUser({ id: decoded.sub, email: "unknown@example.com" }); // or a placeholder
+          } else {
+            console.warn("Token missing required fields"); // 🔍
+          }
+        } else {
+          console.warn("No token or token expired"); // 🔍
+        }
+      } catch (e) {
+        console.error("Failed to restore session", e);
+      } finally {
+        setIsReady(true); // happens even if no user is set
       }
-    })();
+    };
+    restoreSession();
   }, []);
+  
+  
 
   /** c. function to call backend, save token, update state */
   const login = async (email: string, password: string) => {
@@ -59,7 +80,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   /** e. useMemo so Provider only re-renders children when *user* changes */
-  const value = useMemo(() => ({ user, login, logout }), [user]);
+  const value = useMemo(() => ({ user, login, logout, isReady }), [user, isReady]);
 
   /** f. Provide!  Everything inside can call useContext(AuthContext) */
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
