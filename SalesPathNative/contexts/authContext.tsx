@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log("Decoded token:", decoded); // 🔍
           
           if (decoded?.sub) {
-            setUser({ id: decoded.sub, email: "unknown@example.com" }); // or a placeholder
+            setUser({ id: decoded.sub, email: decoded.email }); // or a placeholder
           } else {
             console.warn("Token missing required fields"); // 🔍
           }
