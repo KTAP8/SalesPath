@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
@@ -7,6 +7,7 @@ import Dropdown from "@/components/dropdown";
 import Button from "@/components/Button";
 import { Colors } from "@/constants/Colors";
 import TableReport from "@/components/TableReport";
+import { AuthContext } from "@/contexts/authContext";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -24,6 +25,7 @@ export default function ProspectReportScreen() {
   >();
   const [selectedRegion, setSelectedRegion] = useState<string | undefined>();
   const [prospects, setProspects] = useState<ProspectRecord[]>([]);
+  const {token} = useContext(AuthContext)
 
   const tableHead = [
     "Client Name",
@@ -44,7 +46,11 @@ export default function ProspectReportScreen() {
   useEffect(() => {
     // Load salesmen for dropdown
     axios
-      .get(`${API_URL}/api/salesmen`)
+      .get(`${API_URL}/api/salesmen`,{
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setSalesmen(res.data.map((s: any) => s.SalesName)))
       .catch((err) => console.error("Salesmen load error:", err));
   }, []);
@@ -53,7 +59,11 @@ export default function ProspectReportScreen() {
     if (selectedSalesman) {
       // Load client regions if salesman selected
       axios
-        .get(`${API_URL}/api/clients?sales=${selectedSalesman}`)
+        .get(`${API_URL}/api/clients?sales=${selectedSalesman}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
         .then((res) => {
           const regionList = [
             ...new Set(res.data.map((c: any) => c.ClientReg)),
@@ -72,7 +82,11 @@ export default function ProspectReportScreen() {
     if (selectedRegion) params.append("region", selectedRegion);
 
     axios
-      .get(`${API_URL}/api/prospects?${params.toString()}`)
+      .get(`${API_URL}/api/prospects?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setProspects(res.data))
       .catch((err) => console.error("Prospects fetch error:", err));
   };

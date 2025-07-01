@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
@@ -7,6 +7,7 @@ import OverviewItem from "@/components/dashboard/OverviewItem";
 import VisitCard from "@/components/dashboard/VisitCard";
 import SaleCard from "@/components/dashboard/SaleCard";
 import { Colors } from "@/constants/Colors";
+import { AuthContext } from "@/contexts/authContext";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -25,20 +26,29 @@ type RevenueStats = {
 export default function DashboardScreen() {
   const [clientStats, setClientStats] = useState<ClientStats[]>([]);
   const [revenueStats, setRevenueStats] = useState<RevenueStats[]>([]);
+  const {token} = useContext(AuthContext)
 
   useEffect(() => {
     axios
-      .get(`${API_URL}/api/clients-per-salesman?from=2025-04-01&to=2025-05-30`)
+      .get(`${API_URL}/api/clients-per-salesman?from=2025-04-01&to=2025-05-30`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
     console.log(clientStats);
 
     axios
-      .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`)
+      .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setRevenueStats(res.data))
       .catch((err) => console.error("Revenue error:", err));
-  }, []);
+  }, [token]);
 
   return (
     <LayoutWithSidebar>

@@ -4,7 +4,8 @@ import LayoutWithSidebar from "@/components/LayoutWithSidebar";
 import { AuthContext } from "@/contexts/authContext";
 
 export default function ProfileScreen() {
-  const { user } = useContext(AuthContext);
+  const { user, token } = useContext(AuthContext);
+  
   return (
     <LayoutWithSidebar>
       <Text style={{ fontSize: 24 }}>👤 Profile</Text>

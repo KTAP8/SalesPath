@@ -1,14 +1,16 @@
 // app/(app)/_layout.tsx
-import { Redirect, Slot, useSegments } from "expo-router";
-import React, { useContext } from "react";
+import { Redirect, Slot, router } from "expo-router";
+import React, { useContext, useEffect } from "react";
 import { AuthContext } from "@/contexts/authContext";
 import { View, ActivityIndicator } from "react-native";
+import { jwtDecode, JwtPayload } from "jwt-decode";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 
 export default function AppProtectedLayout() {
-  const { user, isReady } = useContext(AuthContext);    
-
+  const { user, isReady, token, logout } = useContext(AuthContext);    
+  
   if (!isReady) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -16,6 +18,30 @@ export default function AppProtectedLayout() {
       </View>
     );
   }
+
+  useEffect(() => {
+    const checkTokenValidity = async () => {
+      const token = await AsyncStorage.getItem("access_token");
+      if (!token) {
+        router.replace("/(auth)/login");
+        return;
+      }
+
+      try {
+        const { exp } = jwtDecode<JwtPayload>(token);
+        if (!exp || Date.now() >= exp * 1000) {
+          await logout(); // Clears token + user state
+          router.replace("/(auth)/login");
+        }
+      } catch (e) {
+        console.warn("Invalid token format");
+        await logout();
+        router.replace("/(auth)/login");
+      }
+    };
+
+    checkTokenValidity();
+  }, []);
   
   // 1️⃣ If not logged-in and user tries to access  /dashboard etc → redirect
   if (isReady && !user) {

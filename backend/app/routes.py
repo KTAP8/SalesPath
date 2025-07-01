@@ -455,12 +455,59 @@ from datetime import datetime
 from . import db
 from werkzeug.security import generate_password_hash
 from werkzeug.security import check_password_hash
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt
+)
+from . import jwt  # ✅ pulls the shared jwt object
 
 main = Blueprint("main", __name__)
 
 
+# --- JWT Error Handlers ---
+# This callback is called if an expired but otherwise valid access token
+# attempts to access a protected endpoint.
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """
+    Handles responses for expired JWT tokens.
+    Returns a 401 Unauthorized response with a specific message.
+    """
+    return jsonify({
+        "msg": "The access token has expired",
+        "error": "token_expired"
+    }), 401
+
+# This callback is called if an invalid JWT token attempts to access
+# a protected endpoint (e.g., tampered, malformed).
+@jwt.invalid_token_loader
+def invalid_token_callback(callback_error):
+    """
+    Handles responses for invalid JWT tokens.
+    Returns a 401 Unauthorized response with a specific message.
+    """
+    return jsonify({
+        "msg": "Signature verification failed or token is invalid",
+        "error": "invalid_token"
+    }), 401
+
+# This callback is called if no JWT token is provided when required.
+@jwt.unauthorized_loader
+def unauthorized_callback(callback_error):
+    """
+    Handles responses when no JWT token is provided for a protected endpoint.
+    Returns a 401 Unauthorized response with a specific message.
+    """
+    return jsonify({
+        "msg": "Missing Authorization Header",
+        "error": "authorization_required"
+    }), 401
+
 @main.route("/")
+@jwt_required()
 def test_connection():
     try:
         engine = db.get_engine(app=None, bind="touchdb")
@@ -472,6 +519,7 @@ def test_connection():
 
 
 @main.route("/api/salesmen", methods=["GET"])
+@jwt_required()
 def get_all_salesmen():
     try:
         salesmen = SalesMan.query.all()
@@ -481,6 +529,7 @@ def get_all_salesmen():
 
 
 @main.route("/api/clients", methods=["GET"])
+@jwt_required()
 def get_all_clients():
     try:
         clients = Client.query.all()
@@ -490,6 +539,7 @@ def get_all_clients():
 
 
 @main.route("/api/visits", methods=["GET"])
+@jwt_required()
 def get_filtered_visits_cross_db():
     try:
         from_date = request.args.get("from")
@@ -567,6 +617,7 @@ def get_filtered_visits_cross_db():
 
 
 @main.route("/api/visits", methods=["POST"])
+@jwt_required()
 def create_visit():
     try:
         data = request.get_json()
@@ -616,6 +667,7 @@ def create_visit():
 
 
 @main.route("/api/visit/<int:visit_id>/resolve", methods=["PUT"])
+@jwt_required()
 def update_resolved_status(visit_id):
     try:
         data = request.get_json(force=True, silent=True)
@@ -647,6 +699,7 @@ def update_resolved_status(visit_id):
 
 
 @main.route("/api/prospects", methods=["GET"])
+@jwt_required()
 def get_prospects():
     try:
         sales_name = request.args.get("sales")
@@ -669,6 +722,7 @@ def get_prospects():
 
 
 @main.route("/api/prospects", methods=["POST"])
+@jwt_required()
 def create_prospect():
     try:
         data = request.get_json()
@@ -702,6 +756,7 @@ def create_prospect():
 
 
 @main.route("/api/invoices", methods=["GET"])
+@jwt_required()
 def get_invoices():
     try:
         from_date = request.args.get("from")
@@ -732,6 +787,7 @@ def get_invoices():
 
 
 @main.route("/api/revenue", methods=["GET"])
+@jwt_required()
 def get_salesman_revenue():
     try:
         region = request.args.get("region")
@@ -807,6 +863,7 @@ def get_salesman_revenue():
 
 
 @main.route("/api/clients-per-salesman", methods=["GET"])
+@jwt_required()
 def get_client_counts():
     try:
         from datetime import date, timedelta
