@@ -27,23 +27,17 @@ def create_app():
         'touchdb': os.getenv("POSTGRES_TOUCH_URL"),
         'chaluck': os.getenv("POSTGRES_CHALUCK_URL"),
     }
-
-        # --- JWT Configuration ---
+    # --- JWT Configuration ---
     # You should use a strong, random secret key in a production environment
     # For example, generate with: import secrets; secrets.token_hex(32)
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-jwt-key")
 
     # **THIS IS WHERE YOU SET THE JWT ACCESS TOKEN EXPIRATION TIME**
-    # For example, 15 minutes.
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes = 10)
-
-    # Optional: Set the expiration time for refresh tokens (e.g., 30 days)
-    app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=2)
 
     CORS(app)  # ⬅️ Add this line
     # 🔌 Initialize DB
     db.init_app(app)
-    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "change_me_now")
 
     jwt.init_app(app)
 
