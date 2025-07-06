@@ -9,6 +9,7 @@ import {router} from 'expo-router'
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode, JwtPayload } from "jwt-decode";
 import api from "../src/api";                 // ← Axios instance with interceptor
+import { LogOut } from "lucide-react-native";
 
 /*───────────────────────────────────────────────────────────────────*/
 /* 1) Type declarations                                             */
@@ -55,6 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             console.warn("Token missing required fields"); // 🔍
           }
         } else {
+          logout();
           console.warn("No token or token expired"); // 🔍
         }
       } catch (e) {
@@ -66,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     restoreSession();
   }, []);
   
-  
+
 
   /** c. function to call backend, save token, update state */
   const login = async (email: string, password: string) => {
@@ -83,6 +85,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(null);
     router.replace('/(auth)/login');
   };
+
+  // useEffect(() => {
+  //   if (!token) return;
+  //   // decode out the exp claim
+  //   const { exp } = jwtDecode<JwtPayload>(token);
+  //   const msUntilExpiry = exp! * 1000 - Date.now();
+  
+  //   // if it's already expired, go ahead and logout
+  //   if (msUntilExpiry <= 0) {
+  //     logout();
+  //     return;
+  //   }
+  
+  //   // otherwise schedule a logout at the exact expiry time
+  //   const timeoutId = setTimeout(logout, msUntilExpiry);
+  
+  //   // cleanup if the token ever changes before expiry
+  //   return () => clearTimeout(timeoutId);
+  // }, [token, logout]);
+  
 
   /** e. useMemo so Provider only re-renders children when *user* changes */
   const value = useMemo(() => ({ token, user, login, logout, isReady }), [token, user, isReady]);
