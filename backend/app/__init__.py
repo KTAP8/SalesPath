@@ -33,7 +33,7 @@ def create_app():
     app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-jwt-key")
 
     # **THIS IS WHERE YOU SET THE JWT ACCESS TOKEN EXPIRATION TIME**
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(seconds = 10)
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes = 15)
 
     CORS(app)  # ⬅️ Add this line
     # 🔌 Initialize DB
