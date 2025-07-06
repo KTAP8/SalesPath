@@ -9,7 +9,7 @@ import {router} from 'expo-router'
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode, JwtPayload } from "jwt-decode";
 import api from "../src/api";                 // ← Axios instance with interceptor
-import { LogOut } from "lucide-react-native";
+import PopupModal from "@/components/Popup";
 
 /*───────────────────────────────────────────────────────────────────*/
 /* 1) Type declarations                                             */
@@ -37,6 +37,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [ isReady, setIsReady] = useState<boolean | undefined>(undefined);
   const [ token, setToken] = useState<string| null>(null)
+  const [expiredVisible, setExpiredVisible] = useState(false);
+
 
   /** b. On app launch, read token from storage & restore session */
   useEffect(() => {
@@ -68,7 +70,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     restoreSession();
   }, []);
   
-
+  useEffect(() => {
+    if (!token) return;
+  
+    const { exp } = jwtDecode<JwtPayload>(token);
+    const msUntilExpiry = exp! * 1000 - Date.now();
+  
+    if (msUntilExpiry <= 0) {
+      // already expired
+      setExpiredVisible(true);
+    } else {
+      // schedule the popup
+      const id = setTimeout(() => setExpiredVisible(true), msUntilExpiry);
+      return () => clearTimeout(id);
+    }
+  }, [token]);
 
   /** c. function to call backend, save token, update state */
   const login = async (email: string, password: string) => {
@@ -86,31 +102,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     router.replace('/(auth)/login');
   };
 
-  // useEffect(() => {
-  //   if (!token) return;
-  //   // decode out the exp claim
-  //   const { exp } = jwtDecode<JwtPayload>(token);
-  //   const msUntilExpiry = exp! * 1000 - Date.now();
-  
-  //   // if it's already expired, go ahead and logout
-  //   if (msUntilExpiry <= 0) {
-  //     logout();
-  //     return;
-  //   }
-  
-  //   // otherwise schedule a logout at the exact expiry time
-  //   const timeoutId = setTimeout(logout, msUntilExpiry);
-  
-  //   // cleanup if the token ever changes before expiry
-  //   return () => clearTimeout(timeoutId);
-  // }, [token, logout]);
-  
-
   /** e. useMemo so Provider only re-renders children when *user* changes */
   const value = useMemo(() => ({ token, user, login, logout, isReady }), [token, user, isReady]);
 
   /** f. Provide!  Everything inside can call useContext(AuthContext) */
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      <PopupModal
+        visible={expiredVisible}
+        title="Session Expired"
+        description="Your session has expired. Please log in again."
+        onClose={async () => {
+          setExpiredVisible(false);
+          await logout();    // now actually clear storage & redirect
+        }}
+      />
+      {children}
+    </AuthContext.Provider>
+  );
+  
 };
 // children is a speical prop  in react that represents whatever  you wrap  inside  a component. 
 
