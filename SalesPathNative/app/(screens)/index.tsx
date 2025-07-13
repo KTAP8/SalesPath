@@ -1,12 +1,5 @@
-import { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  Pressable,
-} from "react-native";
+import { useEffect, useState, useContext } from "react";
+import { View, Text, ScrollView, StyleSheet, Modal, Pressable, } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";
@@ -18,6 +11,7 @@ import FilterTextInput from "@/components/FilterTextInput";
 import { Colors } from "@/constants/Colors";
 import NoteBox from "@/components/NoteBox";
 import Button from "@/components/Button";
+import { AuthContext } from "@/contexts/authContext";
 
 export default function SalesmenScreen() {
   const [salesmen, setSalesmen] = useState<SalesMan[]>([]);
@@ -43,10 +37,15 @@ export default function SalesmenScreen() {
   const [modalMessage, setModalMessage] = useState("");
   const API_URL =
     Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
+  const {token} = useContext(AuthContext)
 
   useEffect(() => {
     axios
-      .get(`${API_URL}/api/salesmen`)
+      .get(`${API_URL}/api/salesmen`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => {
         console.log("✅ Full API Response:", res.data);
         setSalesmen(res.data);
@@ -58,7 +57,11 @@ export default function SalesmenScreen() {
 
   useEffect(() => {
     axios
-      .get(`${API_URL}/api/clients?sales=${selectedSalesman}`)
+      .get(`${API_URL}/api/clients?sales=${selectedSalesman}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => {
         const clients = res.data;
         const newClients = [];
@@ -87,18 +90,6 @@ export default function SalesmenScreen() {
       })
       .catch((err) => console.error("Province fetch error", err));
   }, []);
-
-  // useEffect(() => {
-  //   axios
-  //     .get(`${API_URL}/api/clients`)
-  //     .then((res) => {
-  //       const clients = res.data as { ClientReg: string }[];
-  //       const clientRegions = [...new Set(clients.map((c) => c.ClientReg))];
-  //       console.log(clientRegions);
-  //       setRegions(clientRegions);
-  //     })
-  //     .catch((err) => console.error("Client regions error:", err));
-  // }, []);
 
   const handleProvinceSelect = (provinceNameEn: string) => {
     setselectedRegion(provinceNameEn);
@@ -173,10 +164,10 @@ export default function SalesmenScreen() {
         sale == true
           ? "Sale"
           : custRelation == true
-          ? "Relation"
-          : probReport == true
-          ? "Problem"
-          : "",
+            ? "Relation"
+            : probReport == true
+              ? "Problem"
+              : "",
       Notes: note,
       ProblemNotes: pnote,
       Resolved: 0,
@@ -187,6 +178,7 @@ export default function SalesmenScreen() {
       .post(url, data, {
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
         },
       })
       .then((response) => {
@@ -196,9 +188,8 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${
-              error.response?.data?.message || "No server response"
-            }`
+          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
+          }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostResult(message);
@@ -222,6 +213,7 @@ export default function SalesmenScreen() {
       .post(url, data, {
         headers: {
           "Content-Type": "application/json",
+           Authorization: `Bearer ${token}`
         },
       })
       .then((response) => {
@@ -231,9 +223,8 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${
-              error.response?.data?.message || "No server response"
-            }`
+          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
+          }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostNewResult(message);

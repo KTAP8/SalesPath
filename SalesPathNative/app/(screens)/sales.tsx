@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useContext } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
-  FlatList,
-  TextInput,
 } from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
@@ -16,6 +13,7 @@ import DatePickerInput from "@/components/DatePicker";
 import Button from "@/components/Button";
 import { Colors } from "@/constants/Colors";
 import TableReport from "@/components/TableReport";
+import { AuthContext } from "@/contexts/authContext";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
@@ -35,6 +33,7 @@ export default function SalesmanReportScreen() {
     setToDate(val);
     setWasToDateManuallySet(true); // 🛡️ Mark that user edited it manually
   };
+  const {token} = useContext(AuthContext)
 
   const tableHead = [
     "Client ID",
@@ -63,13 +62,21 @@ export default function SalesmanReportScreen() {
   // Load options (salesmen and regions)
   useEffect(() => {
     axios
-      .get(`${API_URL}/api/salesmen`)
+      .get(`${API_URL}/api/salesmen`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setSalesmen(res.data.map((s: any) => s.SalesName)))
       .catch((err) => console.error("Salesmen error:", err));
     if (selectedSalesman) {
       // Only fetch when salesman selected
       axios
-        .get(`${API_URL}/api/clients?sales=${selectedSalesman}`)
+        .get(`${API_URL}/api/clients?sales=${selectedSalesman}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
         .then((res) => {
           const clients = res.data as { ClientReg: string }[];
           const salesmanRegions = [...new Set(clients.map((c) => c.ClientReg))];
@@ -89,11 +96,15 @@ export default function SalesmanReportScreen() {
     if (toDate) params.append("to", toDate);
 
     axios
-      .get(`${API_URL}/api/visits?${params.toString()}`)
+      .get(`${API_URL}/api/visits?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       .then((res) => setReportData(res.data))
       .catch((err) => console.error("Visit search error:", err));
 
-    console.log(params.toString());
+    // console.log(params.toString());
   };
 
   return (
