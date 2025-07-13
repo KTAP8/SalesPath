@@ -8,10 +8,19 @@ import VisitCard from "@/components/dashboard/VisitCard";
 import SaleCard from "@/components/dashboard/SaleCard";
 import { Colors } from "@/constants/Colors";
 import { AuthContext } from "@/contexts/authContext";
+import { Modal, Pressable, Platform } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import RNPickerSelect from "react-native-picker-select";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import DatePickerInput from "@/components/DatePicker";
+import Button from "@/components/Button";
+import DropdownValue from "@/components/dropdown_value_label";
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
 
 type ClientStats = {
+  SalesId: number; // <-- Add this
   SalesName: string;
   TotalClients: number;
   VisitedClients: number;
@@ -27,10 +36,26 @@ export default function DashboardScreen() {
   const [clientStats, setClientStats] = useState<ClientStats[]>([]);
   const [revenueStats, setRevenueStats] = useState<RevenueStats[]>([]);
   const {token} = useContext(AuthContext)
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedSalesName, setSelectedSalesName] = useState<string | null>(
+    null
+  );
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
+  const [showPicker, setShowPicker] = useState(false);
 
   useEffect(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .split("T")[0];
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .split("T")[0];
+
     axios
-      .get(`${API_URL}/api/clients-per-salesman?from=2025-04-01&to=2025-05-30`, {
+      .get(`${API_URL}/api/clients-per-salesman?from=${firstDay}&to=${lastDay}`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -38,10 +63,8 @@ export default function DashboardScreen() {
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
-    console.log(clientStats);
-
     axios
-      .get(`${API_URL}/api/revenue?from=2025-04-01&to=2025-05-30`, {
+      .get(`${API_URL}/api/revenue?from=${firstDay}&to=${lastDay}`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -50,10 +73,105 @@ export default function DashboardScreen() {
       .catch((err) => console.error("Revenue error:", err));
   }, [token]);
 
+  const handleGeneratePDF = async () => {
+    const selectedSales = clientStats.find(
+      (c) => c.SalesName === selectedSalesName
+    );
+    if (!selectedSales) return alert("Please select a salesman");
+
+    const [year, month] = selectedMonth.split("-");
+
+    const url = `${API_URL}/api/sales-report?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+
+    try {
+      const response = await axios.get(url, { responseType: "blob" });
+      if (Platform.OS === "web") {
+        const blob = new Blob([response.data], { type: "application/pdf" });
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `sales_report_${year}_${month}.pdf`;
+        link.click();
+      } else {
+        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.pdf`;
+        await FileSystem.writeAsStringAsync(path, response.data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await Sharing.shareAsync(path);
+      }
+    } catch (error) {
+      console.error("Download error:", error);
+      alert(`Failed to generate PDF. ${error}`);
+    }
+  };
+
+  const handleGenerateCSV = async () => {
+    const selectedSales = clientStats.find(
+      (c) => c.SalesName === selectedSalesName
+    );
+    if (!selectedSales) return alert("Please select a salesman");
+
+    const [year, month] = selectedMonth.split("-");
+
+    const url = `${API_URL}/api/sales-report-csv?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+
+    try {
+      const response = await axios.get(url, { responseType: "blob" });
+
+      if (Platform.OS === "web") {
+        const blob = new Blob([response.data], {
+          type: "text/csv;charset=utf-8",
+        });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `sales_report_${year}_${month}.csv`;
+        link.click();
+      } else {
+        const base64Data = await response.data.text(); // Convert blob to string
+        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.csv`;
+        await FileSystem.writeAsStringAsync(path, base64Data, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        await Sharing.shareAsync(path);
+      }
+    } catch (error) {
+      console.error("CSV download error:", error);
+      alert(`Failed to generate CSV. ${error}`);
+    }
+  };
+
   return (
     <LayoutWithSidebar>
       <ScrollView style={styles.container}>
-        <Text style={styles.title}>Dashboard</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Text style={styles.title}>Dashboard</Text>
+          {/* Button to open modal */}
+          <Pressable
+            style={{
+              backgroundColor: Colors.primaryGreen,
+              padding: 10,
+              borderRadius: 10,
+              marginBottom: 20,
+              paddingHorizontal: 20,
+            }}
+            onPress={() => setModalVisible(true)}
+          >
+            <Text
+              style={{
+                color: "white",
+                textAlign: "center",
+                fontWeight: "bold",
+              }}
+            >
+              Generate Sales Report
+            </Text>
+          </Pressable>
+        </View>
 
         {/* Overview counters */}
         <View style={styles.overviewContainer}>
@@ -73,7 +191,7 @@ export default function DashboardScreen() {
           />
         </View>
 
-        {/* Visit Overview */}
+        {/* Visit and Sale Cards */}
         <Text style={styles.sectionTitle}>Visits Overview</Text>
         <ScrollView horizontal style={styles.cardRow}>
           {clientStats.map((item, index) => (
@@ -81,7 +199,6 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
 
-        {/* Sale Overview */}
         <Text style={styles.sectionTitle}>Sale Overview</Text>
         <ScrollView horizontal style={styles.cardRow}>
           {revenueStats.map((item, index) => (
@@ -89,6 +206,91 @@ export default function DashboardScreen() {
           ))}
         </ScrollView>
       </ScrollView>
+
+      {/* Modal */}
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View
+          style={{
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100%",
+            padding: 50,
+          }}
+        >
+          <View
+            style={{
+              width: "50%",
+              backgroundColor: "white",
+              borderRadius: 10,
+              flex: 1,
+              padding: 50,
+              gap: 20,
+              justifyContent: "space-between",
+            }}
+          >
+            <View>
+              <Text
+                style={{
+                  fontSize: 30,
+                  fontWeight: "bold",
+                  marginBottom: 10,
+                  color: Colors.primaryBlue,
+                  fontFamily: "Lexend",
+                }}
+              >
+                Generate PDF Report
+              </Text>
+              <View style={{ gap: 30 }}>
+                <View style={{ gap: 10 }}>
+                  <DropdownValue
+                    label="Salesman"
+                    selected={selectedSalesName ?? undefined} // ✅ Convert null to undefined
+                    setSelected={setSelectedSalesName}
+                    options={clientStats.map((c) => ({
+                      label: c.SalesName,
+                      value: c.SalesName,
+                    }))}
+                    placeholder="Select Salesman"
+                  />
+                </View>
+
+                <DatePickerInput
+                  label="Select Month"
+                  value={selectedMonth}
+                  setValue={setSelectedMonth}
+                />
+              </View>
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                marginTop: 20,
+              }}
+            >
+              <Button
+                label="Cancel"
+                onPress={() => setModalVisible(false)}
+                size="M"
+                color={Colors.error}
+              />
+              <Button
+                label="Generate PDF"
+                onPress={handleGeneratePDF}
+                size="M"
+                color={Colors.primaryBlue}
+              />
+              <Button
+                label="Generate CSV"
+                onPress={handleGenerateCSV}
+                size="M"
+                color={Colors.primaryGreen}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutWithSidebar>
   );
 }

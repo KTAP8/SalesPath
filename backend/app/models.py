@@ -7,8 +7,10 @@ class SalesMan(db.Model):
     __bind_key__ = "chaluck"
     __tablename__ = "vsalesperson"
 
-    SalesId = db.Column(db.BigInteger, primary_key=True, name="saleperson_id")
-    SalesName = db.Column(db.Text, name="name")
+    SalesId = db.Column(
+        db.BigInteger, primary_key=True, name="saleperson_id")
+    SalesName = db.Column(db.Text, name='name')
+    SalesLogin = db.Column(db.Text, name='saleperson_login')  # ✅ fixed here
 
     def to_dict(self):
         return {"SalesId": self.SalesId, "SalesName": self.SalesName}
@@ -51,6 +53,7 @@ class Visit(db.Model):
     Activity = db.Column(db.String(255))
     Notes = db.Column(db.String(10000))
     ProblemNotes = db.Column(db.String(10000))
+    Sales = db.Column(db.JSON)
     # TINYINT maps to Boolean in SQLAlchemy
     Resolved = db.Column(db.Boolean, default=True)
 
@@ -65,24 +68,17 @@ class Visit(db.Model):
             "Activity": self.Activity,
             "Notes": self.Notes,
             "ProblemNotes": self.ProblemNotes,
-            "Resolved": self.Resolved,
+            "Sales": self.Sales,
+            "Resolved": self.Resolved
         }
 
-    def __init__(
-        self,
-        SalesName,
-        ClientId,
-        Activity,
-        Notes=None,
-        ProblemNotes=None,
-        Resolved=None,
-        VisitDateTime=None,
-    ):
+    def __init__(self, SalesName, ClientId, Activity, Notes=None, ProblemNotes=None, Sales=None, Resolved=None, VisitDateTime=None):
         self.SalesName = SalesName
         self.ClientId = ClientId
         self.Activity = Activity
         self.Notes = Notes
         self.ProblemNotes = ProblemNotes if Activity.lower() == "problem" else None
+        self.Sales = Sales if Activity.lower() == 'sale' else None
         self.VisitDateTime = VisitDateTime if VisitDateTime else func.now()
 
         # Default Resolved: False if "Problem", otherwise True
