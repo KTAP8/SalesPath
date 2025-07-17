@@ -1,0 +1,16 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ./SalesPathNative
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    depends_on:
+      - backend

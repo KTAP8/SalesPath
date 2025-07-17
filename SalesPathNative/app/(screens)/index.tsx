@@ -1,5 +1,12 @@
 import { useEffect, useState, useContext } from "react";
-import { View, Text, ScrollView, StyleSheet, Modal, Pressable, } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Modal,
+  Pressable,
+} from "react-native";
 import axios from "axios";
 import Constants from "expo-constants";
 import { SalesMan } from "@/constants/Types";
@@ -37,14 +44,15 @@ export default function SalesmenScreen() {
   const [modalMessage, setModalMessage] = useState("");
   const API_URL =
     Constants.expoConfig?.extra?.API_URL || "http://127.0.0.1:5000";
-  const {token} = useContext(AuthContext)
+  const { token } = useContext(AuthContext);
 
   useEffect(() => {
+    console.log("API URL: " + API_URL);
     axios
       .get(`${API_URL}/api/salesmen`, {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       })
       .then((res) => {
         console.log("✅ Full API Response:", res.data);
@@ -59,8 +67,8 @@ export default function SalesmenScreen() {
     axios
       .get(`${API_URL}/api/clients?sales=${selectedSalesman}`, {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       })
       .then((res) => {
         const clients = res.data;
@@ -164,10 +172,10 @@ export default function SalesmenScreen() {
         sale == true
           ? "Sale"
           : custRelation == true
-            ? "Relation"
-            : probReport == true
-              ? "Problem"
-              : "",
+          ? "Relation"
+          : probReport == true
+          ? "Problem"
+          : "",
       Notes: note,
       ProblemNotes: pnote,
       Resolved: 0,
@@ -178,7 +186,7 @@ export default function SalesmenScreen() {
       .post(url, data, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
       })
       .then((response) => {
@@ -188,8 +196,9 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
-          }`
+          ? `❌ Error: ${error.message}, ${
+              error.response?.data?.message || "No server response"
+            }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostResult(message);
@@ -213,7 +222,7 @@ export default function SalesmenScreen() {
       .post(url, data, {
         headers: {
           "Content-Type": "application/json",
-           Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
       })
       .then((response) => {
@@ -223,8 +232,9 @@ export default function SalesmenScreen() {
       })
       .catch((error: any) => {
         const message = axios.isAxiosError(error)
-          ? `❌ Error: ${error.message}, ${error.response?.data?.message || "No server response"
-          }`
+          ? `❌ Error: ${error.message}, ${
+              error.response?.data?.message || "No server response"
+            }`
           : `❌ Unexpected Error: ${error.message}`;
 
         setPostNewResult(message);
@@ -240,12 +250,15 @@ export default function SalesmenScreen() {
       <ScrollView style={{ paddingHorizontal: 20 }}>
         <Text style={styles.header}>Salesmen</Text>
         <View style={styles.dropdown}>
-          <Dropdown
-            label="Who are you?"
-            options={salesmen.map((item) => item.SalesName)}
-            selected={selectedSalesman}
-            setSelected={setSelectedSalesman}
-          />
+          {salesmen &&
+            Array.isArray(salesmen) && ( // Add this check
+              <Dropdown
+                label="Who are you?"
+                options={salesmen.map((item) => item.SalesName)}
+                selected={selectedSalesman}
+                setSelected={setSelectedSalesman}
+              />
+            )}
         </View>
 
         <View style={styles.checkbox}>
