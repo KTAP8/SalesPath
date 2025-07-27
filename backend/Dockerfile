@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Copy and create environment
 COPY environment/clean-environment.yml .
+# COPY clean-environment.yml .
 RUN conda update -n base -c defaults conda && \
     conda env create -f clean-environment.yml
 
@@ -17,6 +18,26 @@ ENV PATH /opt/conda/envs/salespathenv/bin:$PATH
 COPY backend/ .
 RUN pip install -r requirements.txt
 
-EXPOSE 5000
+EXPOSE 8080
 
 CMD ["python", "run.py"]
+
+# FROM continuumio/miniconda3
+
+# WORKDIR /app
+
+# COPY clean-environment.yml .
+# RUN conda update -n base -c defaults conda && \
+#     conda env create -f clean-environment.yml
+
+# # Use bash shell
+# SHELL ["/bin/bash", "-c"]
+
+# COPY requirements.txt ./
+# RUN pip install -r requirements.txt
+
+# COPY . .
+
+# EXPOSE 8080
+
+# CMD ["conda", "run", "--no-capture-output", "-n", "salespathenv", "python", "run.py"]

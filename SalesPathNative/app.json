@@ -38,7 +38,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "API_URL": "http://127.0.0.1:5000"
+      "API_URL": "https://salespath-backend-517707059146.asia-southeast1.run.app"
     }
   }
 }
