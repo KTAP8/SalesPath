@@ -968,26 +968,70 @@ def create_user():
     return jsonify(new_user.to_dict()), 201
 
 
+# @main.route("/api/login", methods=["POST"])
+# def login():
+#     data = request.get_json(silent=True) or request.form.to_dict()
+#     email = data.get("email") if data else None
+#     password = data.get("password") if data else None
+
+#     if not email or not password:
+#         return jsonify({"error": "email and password required"}), 400
+
+#     user = Auth_Users.query.filter_by(email=email).first()
+#     if user is None or not check_password_hash(user.password_hash, password):
+#         return jsonify({"error": "invalid credentials"}), 401
+
+#     access_token = create_access_token(identity=user.id)
+
+#     return (
+#         jsonify(
+#             {
+#                 "access_token": access_token,
+#                 "user": user.to_dict(),  # safe public info only
+#             }
+#         ),
+#         200,
+#     )
 @main.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json(silent=True) or request.form.to_dict()
+    
+    # --- DEBUG LINE ---
+    print(f"Received data: {data}")
+    
     email = data.get("email") if data else None
     password = data.get("password") if data else None
 
     if not email or not password:
         return jsonify({"error": "email and password required"}), 400
 
+    # --- DEBUG LINE ---
+    print(f"Attempting login for email: {email}")
+
     user = Auth_Users.query.filter_by(email=email).first()
+    
+    # --- DEBUG LINES ---
+    if user is None:
+        print(f"USER NOT FOUND in local database!")
+    else:
+        print(f"User found: {user.email}")
+        print(f"Checking password against hash: {user.password_hash}")
+        
+        pw_check = check_password_hash(user.password_hash, password)
+        print(f"Password check result: {pw_check}")
+
     if user is None or not check_password_hash(user.password_hash, password):
+        print("Login failed, returning 401.") # --- DEBUG LINE ---
         return jsonify({"error": "invalid credentials"}), 401
 
     access_token = create_access_token(identity=user.id)
-
+    
+    print("Login successful, returning 200.") # --- DEBUG LINE ---
     return (
         jsonify(
             {
                 "access_token": access_token,
-                "user": user.to_dict(),  # safe public info only
+                "user": user.to_dict(),
             }
         ),
         200,
@@ -1405,88 +1449,167 @@ def export_sales_report_csv():
 def dialogflow_webhook():
     try:
         req = request.get_json()
-        intent = req.get('queryResult', {}).get(
-            'intent', {}).get('displayName')
+        intent = req.get('queryResult', {}).get('intent', {}).get('displayName')
         output_contexts = req.get('queryResult', {}).get('outputContexts', [])
         print("💡 Detected intent:", intent)
 
+        # ---------- helpers ----------
         def get_param_from_contexts(name):
             for ctx in output_contexts:
-                params = ctx.get('parameters', {})
+                params = ctx.get('parameters', {}) or {}
                 if name in params:
                     return params[name]
-            return "-"
-        if intent == "AskCustomerType":
-            customer_type = req.get('queryResult', {}).get(
-                'parameters', {}).get('customer_type')
+            return None
 
+        def make_ctx(name, lifespan=5, params=None):
+            return {
+                "name": f"{req['session']}/contexts/{name}",
+                "lifespanCount": lifespan,
+                **({"parameters": params} if params else {})
+            }
+
+        def get_line_user_id():
+            return (req.get('originalDetectIntentRequest', {})
+                       .get('payload', {})
+                       .get('data', {})
+                       .get('source', {})
+                       .get('userId', '-'))
+
+        def fetch_salesperson_by_line_id(line_id):
+            """
+            Returns {'saleperson_id': int, 'name': str} or None.
+            Tables:
+              - salesperson_lineId(line_id, saleperson_id)
+              - salesperson(saleperson_id, name)   <-- rename 'name' below if needed
+            """
+            engine = db.get_engine(current_app, bind='touchdb', connect_args={"connect_timeout": 3})
+            with engine.connect() as conn:
+                res = conn.execute(text("""
+                    SELECT s.saleperson_id, s.name
+                    FROM salesperson_lineId sl
+                    JOIN salesperson s ON s.saleperson_id = sl.saleperson_id
+                    WHERE sl.line_id = :line_id
+                    LIMIT 1
+                """), {"line_id": line_id}).mappings().first()
+                return dict(res) if res else None
+
+        def fetch_salesperson_by_id(saleperson_id):
+            engine = db.get_engine(current_app, bind='touchdb', connect_args={"connect_timeout": 3})
+            with engine.connect() as conn:
+                res = conn.execute(text("""
+                    SELECT s.saleperson_id, s.name
+                    FROM salesperson s
+                    WHERE s.saleperson_id = :sid
+                    LIMIT 1
+                """), {"sid": saleperson_id}).mappings().first()
+                return dict(res) if res else None
+
+        # =========================================================
+        # NEW: startVisit gate
+        # =========================================================
+        if intent == "StartVisit":
+            user_id = get_line_user_id()
+
+            # Special duplicated user
+            SPECIAL_ID = "Uca6624acd37a606480b00dd212f0a6fe"
+            if user_id == SPECIAL_ID:
+                # Ask which segment and wait
+                return jsonify({
+                    "fulfillmentText": "เลือกประเภทผู้ติดต่อของคุณครับ:\n• ลูกค้าปกติ\n• ลูกค้าอุตสาหกรรม",
+                    "outputContexts": [make_ctx("awaiting_special_user_type", 5)]
+                })
+
+            # Normal flow: map LINE user -> salesperson
+            try:
+                sp = fetch_salesperson_by_line_id(user_id)
+                if not sp:
+                    return jsonify({
+                        "fulfillmentText": "ไม่พบสิทธิ์ผู้ใช้ LINE นี้ในระบบฝ่ายขายของเรา ❌\nโปรดสลับไปใช้ LINE บัญชีที่ผูกกับฝ่ายขายแล้วลองใหม่อีกครั้งครับ"
+                    })
+
+                # Found salesperson — greet and move to AskCustomerType
+                return jsonify({
+                    "fulfillmentText": f"สวัสดีคุณ {sp['name']} 👋\nกรุณาระบุประเภทลูกค้าที่ต้องการจดบันทึก: ใหม่ หรือ เดิม",
+                    "outputContexts": [
+                        make_ctx("awaiting_customer_type", 5, {
+                            "salesperson_id": sp["saleperson_id"],
+                            "salesperson_name": sp["name"]
+                        })
+                    ]
+                })
+            except OperationalError as e:
+                print("❌ Database timeout/connection:", e)
+                return jsonify({"fulfillmentText": "ระบบตอบสนองช้า กรุณาลองใหม่อีกครั้งครับ"})
+            except Exception as e:
+                print("❌ startVisit error:", e)
+                return jsonify({"fulfillmentText": "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้งครับ"})
+
+        # =========================================================
+        # NEW: handler for the special duplicated user’s choice
+        # Dialogflow intent should capture parameter `special_customer_group`
+        # with values exactly: "ลูกค้าปกติ" or "ลูกค้าอุตสาหกรรม"
+        # =========================================================
+        elif intent == "HandleSpecialUserType":
+            choice = req.get('queryResult', {}).get('parameters', {}).get('special_customer_group')
+            if not choice:
+                return jsonify({"fulfillmentText": "กรุณาเลือก: ลูกค้าปกติ หรือ ลูกค้าอุตสาหกรรม ครับ"})
+
+            sid = 80702 if choice == "ลูกค้าปกติ" else 190014
+            sp = fetch_salesperson_by_id(sid)
+            # If lookup fails, still proceed with the id
+            sp_name = sp["name"] if sp else f"รหัส {sid}"
+
+            return jsonify({
+                "fulfillmentText": f"รับทราบครับ คุณ {sp_name} ({sid})\nกรุณาระบุประเภทลูกค้าที่ต้องการจดบันทึก: ใหม่ หรือ เดิม",
+                "outputContexts": [
+                    make_ctx("awaiting_customer_type", 5, {
+                        "salesperson_id": sid,
+                        "salesperson_name": sp_name
+                    })
+                ]
+            })
+
+        # =========================================================
+        # Existing flow from here down...
+        # I only patched where we save to prefer salesperson_name from context.
+        # =========================================================
+
+        if intent == "AskCustomerType":
+            customer_type = req.get('queryResult', {}).get('parameters', {}).get('customer_type')
             if customer_type == "ใหม่":
                 return jsonify({
                     'fulfillmentText': "ขอทราบชื่อลูกค้าใหม่ของคุณครับ",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_customer_name",
-                            "lifespanCount": 5
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_customer_name", 5)]
                 })
-
             elif customer_type == "เดิม":
                 return jsonify({
                     'fulfillmentText': "กรุณาระบุรหัสลูกค้าของคุณครับ",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_client_id",
-                            "lifespanCount": 5
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_client_id", 5)]
                 })
-
             else:
-                return jsonify({
-                    'fulfillmentText': "กรุณาระบุว่าเป็นลูกค้าใหม่หรือเดิมครับ"
-                })
-        elif intent == "GetCustomerName":
-            customer_name = req.get('queryResult', {}).get(
-                'parameters', {}).get('customer_name')
+                return jsonify({'fulfillmentText': "กรุณาระบุว่าเป็นลูกค้าใหม่หรือเดิมครับ"})
 
+        elif intent == "GetCustomerName":
+            customer_name = req.get('queryResult', {}).get('parameters', {}).get('customer_name')
             return jsonify({
                 'fulfillmentText': f"รับทราบชื่อลูกค้า: {customer_name} ครับ\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_customer_city",
-                        "lifespanCount": 5,
-                        "parameters": {
-                                "customer_name": customer_name
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_customer_city", 5, {"customer_name": customer_name})]
             })
 
         elif intent == "GetCustomerCity":
             city = req.get('queryResult', {}).get('parameters', {}).get('city')
             customer_name = get_param_from_contexts('customer_name')
-
             return jsonify({
                 'fulfillmentText': f"ลูกค้า {customer_name} อยู่ที่ {city} ครับ กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_customer_subregion",
-                        "lifespanCount": 5,
-                        "parameters": {
-                            "city": city,
-                            "customer_name": customer_name
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_customer_subregion", 5, {
+                    "city": city, "customer_name": customer_name
+                })]
             })
 
         elif intent == "GetCustomerSubregion":
-            subregion = req.get('queryResult', {}).get(
-                'parameters', {}).get('subregion')
+            subregion = req.get('queryResult', {}).get('parameters', {}).get('subregion')
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
-
             response_text = (
                 f"คุณได้ระบุข้อมูลดังนี้:\n"
                 f"👤 ชื่อลูกค้า: {customer_name}\n"
@@ -1494,20 +1617,11 @@ def dialogflow_webhook():
                 f"🗺️ เขต/อำเภอ: {subregion}\n"
                 "กรุณายืนยันข้อมูล: ใช่ หรือ ไม่ใช่?"
             )
-
             return jsonify({
                 'fulfillmentText': response_text,
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_confirmation_new_customer",
-                        "lifespanCount": 5,
-                        "parameters": {
-                            "customer_name": customer_name,
-                            "city": city,
-                            "subregion": subregion
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_confirmation_new_customer", 5, {
+                    "customer_name": customer_name, "city": city, "subregion": subregion
+                })]
             })
 
         elif intent == "ConfirmNewCustomer":
@@ -1515,20 +1629,19 @@ def dialogflow_webhook():
             city = get_param_from_contexts("city")
             subregion = get_param_from_contexts("subregion")
 
-            user_id = req.get('originalDetectIntentRequest', {}).get(
-                'payload', {}).get('data', {}).get('source', {}).get('userId', '-')
+            # Prefer the salesperson_name from context if available
+            sales_person_name = get_param_from_contexts("salesperson_name") or get_line_user_id()
 
             session = None
             try:
-                engine = db.get_engine(current_app, bind='touchdb', connect_args={
-                                       "connect_timeout": 3})
+                engine = db.get_engine(current_app, bind='touchdb', connect_args={"connect_timeout": 3})
                 session = Session(engine)
 
                 new_prospect = Prospect(
                     ProspectId=customer_name,
                     ProspectReg=city,
                     ProspectSubReg=subregion,
-                    SalesName=user_id
+                    SalesName=sales_person_name
                 )
 
                 session.add(new_prospect)
@@ -1537,33 +1650,22 @@ def dialogflow_webhook():
 
                 return jsonify({
                     'fulfillmentText': "✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว\nกรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม) เพื่อจดครั้งต่อไป",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_customer_type",
-                            "lifespanCount": 5
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_customer_type", 5)]
                 })
 
             except OperationalError as e:
                 print("❌ Database timeout or connection error:", e)
-                return jsonify({
-                    'fulfillmentText': "❌ ระบบตอบสนองช้า กรุณาลองใหม่ในอีกสักครู่ครับ"
-                })
+                return jsonify({'fulfillmentText': "❌ ระบบตอบสนองช้า กรุณาลองใหม่ในอีกสักครู่ครับ"})
             except Exception as e:
                 print("❌ General error:", e)
-                return jsonify({
-                    'fulfillmentText': "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"
-                })
+                return jsonify({'fulfillmentText': "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"})
             finally:
                 if session:
                     session.close()
 
         elif intent == "GetClientId":
-            clientId = req.get('queryResult', {}).get(
-                'parameters', {}).get('clientId')
+            clientId = req.get('queryResult', {}).get('parameters', {}).get('clientId')
             print("🔍 Checking clientId:", clientId)
-
             try:
                 session = Session(db.get_engine(current_app, bind='chaluck'))
                 exists_query = session.query(
@@ -1572,85 +1674,59 @@ def dialogflow_webhook():
                 session.close()
 
                 if exists_query:
+                    # Keep salesperson context alive while asking activity
                     return jsonify({
-                        'fulfillmentText': f"พบลูกค้า {clientId} ในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา\n(เท่านั้น)",
-                        'outputContexts': [
-                            {
-                                "name": f"{req['session']}/contexts/awaiting_activity_type",
-                                "lifespanCount": 5,
-                                "parameters": {
-                                    "clientId": clientId
-                                }
-                            }
-                        ]
+                        'fulfillmentText': (
+                            "พบลูกค้าในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n"
+                            "🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา\n(เท่านั้น)"
+                        ),
+                        'outputContexts': [make_ctx("awaiting_activity_type", 5, {
+                            "clientId": clientId,
+                            "salesperson_id": get_param_from_contexts("salesperson_id"),
+                            "salesperson_name": get_param_from_contexts("salesperson_name")
+                        })]
                     })
                 else:
-                    return jsonify({
-                        'fulfillmentText': "ไม่พบรหัสลูกค้า กรุณาระบุใหม่อีกครั้งครับ"
-                    })
-
+                    return jsonify({'fulfillmentText': "ไม่พบรหัสลูกค้า กรุณาระบุใหม่อีกครั้งครับ"})
             except Exception as e:
                 print("❌ Error querying clientId:", e)
-                return jsonify({
-                    'fulfillmentText': "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ"
-                })
+                return jsonify({'fulfillmentText': "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ"})
 
         elif intent == "AskActivityType":
-            activity_type = req.get('queryResult', {}).get(
-                'parameters', {}).get('activity_type')
+            activity_type = req.get('queryResult', {}).get('parameters', {}).get('activity_type')
             clientId = get_param_from_contexts("clientId")
-
             return jsonify({
                 'fulfillmentText': f"กิจกรรม: {activity_type} ✅\nกรุณาระบุหมายเหตุ/ข้อมูลสำหรับกิจกรรมนี้ครับ",
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_activity_note",
-                        "lifespanCount": 5,
-                        "parameters": {
-                            "clientId": clientId,
-                            "activityType": activity_type
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_activity_note", 5, {
+                    "clientId": clientId,
+                    "activityType": activity_type,
+                    "salesperson_id": get_param_from_contexts("salesperson_id"),
+                    "salesperson_name": get_param_from_contexts("salesperson_name")
+                })]
             })
 
         elif intent == "ProvideActivityNote":
-            activity_note = req.get('queryResult', {}).get(
-                'parameters', {}).get('activity_note')
+            activity_note = req.get('queryResult', {}).get('parameters', {}).get('activity_note')
             clientId = get_param_from_contexts("clientId")
             activityType = get_param_from_contexts("activityType")
-
-            print("📝 Note:", activity_note, "| Type:", activityType)
 
             if activityType == "แจ้งปัญหา":
                 return jsonify({
                     'fulfillmentText': "กรุณาระบุรายละเอียดของปัญหาด้วยครับ",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_problem_note",
-                            "lifespanCount": 5,
-                            "parameters": {
-                                "clientId": clientId,
-                                "activityType": activityType,
-                                "activityNote": activity_note
-                            }
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_problem_note", 5, {
+                        "clientId": clientId, "activityType": activityType, "activityNote": activity_note,
+                        "salesperson_id": get_param_from_contexts("salesperson_id"),
+                        "salesperson_name": get_param_from_contexts("salesperson_name")
+                    })]
                 })
             elif activityType == 'ขาย':
                 return jsonify({
                     'fulfillmentText': "กรุณาระบุของที่คุณขายในรูปแบบนี้(เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\nเช่น สินค้าA:10, สินค้าB:50",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_sales_detail",
-                            "lifespanCount": 5,
-                            "parameters": {
-                                "clientId": clientId,
-                                "activityType": activityType,
-                                "activityNote": activity_note
-                            }
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
+                        "clientId": clientId, "activityType": activityType, "activityNote": activity_note,
+                        "salesperson_id": get_param_from_contexts("salesperson_id"),
+                        "salesperson_name": get_param_from_contexts("salesperson_name")
+                    })]
                 })
             else:
                 return jsonify({
@@ -1661,27 +1737,19 @@ def dialogflow_webhook():
                         f"📝 หมายเหตุ: {activity_note}\n"
                         "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
                     ),
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
-                            "lifespanCount": 5,
-                            "parameters": {
-                                "clientId": clientId,
-                                "activityType": activityType,
-                                "activityNote": activity_note
-                            }
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_confirmation_existing_customer", 5, {
+                        "clientId": clientId, "activityType": activityType, "activityNote": activity_note,
+                        "salesperson_id": get_param_from_contexts("salesperson_id"),
+                        "salesperson_name": get_param_from_contexts("salesperson_name")
+                    })]
                 })
 
         elif intent == "ProvideSalesDetail":
-            sales_detail = req.get('queryResult', {}).get(
-                'parameters', {}).get('sales_detail')
+            sales_detail = req.get('queryResult', {}).get('parameters', {}).get('sales_detail')
             clientId = get_param_from_contexts("clientId")
             activityType = get_param_from_contexts("activityType")
             activityNote = get_param_from_contexts("activityNote")
 
-            # Validate sales_detail format
             pattern = r'^(\s*\S+\s*:\s*\d+\s*)(,\s*\S+\s*:\s*\d+\s*)*$'
             if not sales_detail or not re.match(pattern, sales_detail):
                 return jsonify({
@@ -1690,20 +1758,11 @@ def dialogflow_webhook():
                         "กรุณาระบุของที่คุณขายในรูปแบบนี้ (เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\n"
                         "ตัวอย่างเช่น: สินค้าA:10, สินค้าB:50"
                     ),
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_sales_detail",
-                            "lifespanCount": 5,
-                            "parameters": {
-                                "clientId": clientId,
-                                "activityType": activityType,
-                                "activityNote": activityNote
-                            }
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
+                        "clientId": clientId, "activityType": activityType, "activityNote": activityNote
+                    })]
                 })
 
-            # If valid, continue
             confirmation_text = (
                 f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
                 f"📄 รหัสลูกค้า: {clientId}\n"
@@ -1715,28 +1774,19 @@ def dialogflow_webhook():
 
             return jsonify({
                 'fulfillmentText': confirmation_text,
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
-                        "lifespanCount": 5,
-                        "parameters": {
-                            "clientId": clientId,
-                            "activityType": activityType,
-                            "activityNote": activityNote,
-                            "salesDetail": sales_detail
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_confirmation_existing_customer", 5, {
+                    "clientId": clientId, "activityType": activityType, "activityNote": activityNote,
+                    "salesDetail": sales_detail,
+                    "salesperson_id": get_param_from_contexts("salesperson_id"),
+                    "salesperson_name": get_param_from_contexts("salesperson_name")
+                })]
             })
 
         elif intent == "ProvideProblemNote":
-            problem_note = req.get('queryResult', {}).get(
-                'parameters', {}).get('problem_note')
+            problem_note = req.get('queryResult', {}).get('parameters', {}).get('problem_note')
             clientId = get_param_from_contexts("clientId")
             activityType = get_param_from_contexts("activityType")
             activityNote = get_param_from_contexts("activityNote")
-
-            print("🐞 Problem note received:", problem_note)
 
             confirmation_text = (
                 f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
@@ -1749,18 +1799,12 @@ def dialogflow_webhook():
 
             return jsonify({
                 'fulfillmentText': confirmation_text,
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_confirmation_existing_customer",
-                        "lifespanCount": 5,
-                        "parameters": {
-                            "clientId": clientId,
-                            "activityType": activityType,
-                            "activityNote": activityNote,
-                            "problemNote": problem_note
-                        }
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_confirmation_existing_customer", 5, {
+                    "clientId": clientId, "activityType": activityType, "activityNote": activityNote,
+                    "problemNote": problem_note,
+                    "salesperson_id": get_param_from_contexts("salesperson_id"),
+                    "salesperson_name": get_param_from_contexts("salesperson_name")
+                })]
             })
 
         elif intent == "ConfirmExistingCustomerActivity - yes":
@@ -1785,29 +1829,19 @@ def dialogflow_webhook():
                     return None
 
             sales_json = parse_sales_detail(raw_sales_detail)
-
             visit_datetime = datetime.now()
 
-            # Map Thai activity to internal codes
-            activity_map = {
-                "ขาย": "Sale",
-                "ความสัมพันธ์ลูกค้า": "Relation",
-                "แจ้งปัญหา": "Problem"
-            }
+            activity_map = {"ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
             activity_code = activity_map.get(activityType, activityType)
-
-            # Determine resolved status
             resolved = False if activity_code == "Problem" else True
 
-            # Extract LINE user ID
-            user_id = req.get('originalDetectIntentRequest', {}).get(
-                'payload', {}).get('data', {}).get('source', {}).get('userId', '-')
+            # Prefer salesperson_name captured earlier
+            sales_person_name = get_param_from_contexts("salesperson_name") or get_line_user_id()
 
             try:
                 session = Session(db.get_engine(current_app, bind='touchdb'))
-
                 new_visit = Visit(
-                    SalesName=user_id,
+                    SalesName=sales_person_name,
                     ClientId=clientId,
                     Activity=activity_code,
                     Notes=activityNote,
@@ -1816,51 +1850,31 @@ def dialogflow_webhook():
                     VisitDateTime=visit_datetime,
                     Sales=sales_json
                 )
-
                 session.add(new_visit)
                 session.commit()
                 session.close()
 
                 return jsonify({
                     'fulfillmentText': "✅ บันทึกข้อมูลเรียบร้อยแล้ว\nกรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม) เพื่อจดครั้งต่อไป",
-                    'outputContexts': [
-                        {
-                            "name": f"{req['session']}/contexts/awaiting_customer_type",
-                            "lifespanCount": 5
-                        }
-                    ]
+                    'outputContexts': [make_ctx("awaiting_customer_type", 5)]
                 })
-
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                return jsonify({
-                    'fulfillmentText': "❌ ระบบเกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"
-                })
+                return jsonify({'fulfillmentText': "❌ ระบบเกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"})
 
         elif intent == "ConfirmExistingCustomerActivity - no":
             return jsonify({
                 'fulfillmentText': "โอเคครับ หากต้องการแก้ไข กรุณาระบุประเภทลูกค้าใหม่อีกครั้ง (ใหม่ / เดิม)",
-                'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_customer_type",
-                        "lifespanCount": 5
-                    }
-                ]
+                'outputContexts': [make_ctx("awaiting_customer_type", 5)]
             })
 
         elif intent == "RestartConversation":
             return jsonify({
                 'fulfillmentText': "เริ่มต้นใหม่ครับ กรุณาระบุว่าคุณเป็นลูกค้าใหม่หรือลูกค้าเดิม",
                 'outputContexts': [
-                    {
-                        "name": f"{req['session']}/contexts/_",
-                        "lifespanCount": 0
-                    },
-                    {
-                        "name": f"{req['session']}/contexts/awaiting_customer_type",
-                        "lifespanCount": 5
-                    }
+                    make_ctx("_", 0),
+                    make_ctx("awaiting_customer_type", 5)
                 ]
             })
 

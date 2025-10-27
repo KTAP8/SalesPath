@@ -1,10 +1,12 @@
 // src/api.ts
 import axios from "axios";
-import {router } from "expo-router";
+import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import Constants from "expo-constants";
+
 const api = axios.create({
-  baseURL: "http://127.0.0.1:5000/api",   // change to your LAN / prod URL
+  baseURL: `${Constants.expoConfig?.extra?.API_URL}/api`,
 });
 
 // ──────────── Attach token before every request ────────────
@@ -32,6 +34,5 @@ api.interceptors.response.use(
     return Promise.reject(err);
   }
 );
-
 
 export default api;

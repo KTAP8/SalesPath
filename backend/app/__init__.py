@@ -13,6 +13,8 @@ load_dotenv()  # ⬅️ Load from .env
 db = SQLAlchemy()# db.Model is the base class that all your ORM tables inherit from when you use Flask-SQLAlchemy 
 jwt = JWTManager() 
 
+frontend_url = "http://localhost:8081" #<-- Change this port
+
 def create_app():
     app = Flask(__name__)
     app.debug = True
@@ -34,9 +36,7 @@ def create_app():
 
     # **THIS IS WHERE YOU SET THE JWT ACCESS TOKEN EXPIRATION TIME**
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes = 15)
-
-    CORS(app)  # ⬅️ Add this line
-    # 🔌 Initialize DB
+    CORS(app, origins=[frontend_url])   # 🔌 Initialize DB
     db.init_app(app)
 
     jwt.init_app(app)

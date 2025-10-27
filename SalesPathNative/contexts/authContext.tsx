@@ -5,10 +5,10 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
-import {router} from 'expo-router'
+import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jwtDecode, JwtPayload } from "jwt-decode";
-import api from "../src/api";                 // ← Axios instance with interceptor
+import api from "../src/api"; // ← Axios instance with interceptor
 import PopupModal from "@/components/Popup";
 
 /*───────────────────────────────────────────────────────────────────*/
@@ -35,10 +35,9 @@ export const AuthContext = createContext<AuthContextShape>(null as any);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   /** a. internal state  — current user object or null */
   const [user, setUser] = useState<User | null>(null);
-  const [ isReady, setIsReady] = useState<boolean | undefined>(undefined);
-  const [ token, setToken] = useState<string| null>(null)
+  const [isReady, setIsReady] = useState<boolean | undefined>(undefined);
+  const [token, setToken] = useState<string | null>(null);
   const [expiredVisible, setExpiredVisible] = useState(false);
-
 
   /** b. On app launch, read token from storage & restore session */
   useEffect(() => {
@@ -46,11 +45,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const token = await AsyncStorage.getItem("access_token");
         // console.log("Retrieved token:", token); // 🔍
-  
+
         if (token && !isExpired(token)) {
-          const decoded = jwtDecode<{ sub: number; email: string } & JwtPayload>(token);
+          const decoded = jwtDecode<
+            { sub: number; email: string } & JwtPayload
+          >(token);
           //console.log("Decoded token:", decoded); // 🔍
-          
+
           if (decoded?.sub) {
             setUser({ id: decoded.sub, email: decoded.email }); // or a placeholder
             setToken(token);
@@ -69,13 +70,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     restoreSession();
   }, []);
-  
+
   useEffect(() => {
     if (!token) return;
-  
+
     const { exp } = jwtDecode<JwtPayload>(token);
     const msUntilExpiry = exp! * 1000 - Date.now();
-  
+
     if (msUntilExpiry <= 0) {
       // already expired
       setExpiredVisible(true);
@@ -91,7 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data } = await api.post("/login", { email, password });
     await AsyncStorage.setItem("access_token", data.access_token);
     setUser(data.user);
-    setToken(data.access_token)
+    setToken(data.access_token);
   };
 
   /** d. gfunction to clear everythin */
@@ -99,11 +100,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await AsyncStorage.removeItem("access_token");
     setUser(null);
     setToken(null);
-    router.replace('/(auth)/login');
+    router.replace("/(auth)/login");
   };
 
   /** e. useMemo so Provider only re-renders children when *user* changes */
-  const value = useMemo(() => ({ token, user, login, logout, isReady }), [token, user, isReady]);
+  const value = useMemo(
+    () => ({ token, user, login, logout, isReady }),
+    [token, user, isReady]
+  );
 
   /** f. Provide!  Everything inside can call useContext(AuthContext) */
   return (
@@ -114,15 +118,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description="Your session has expired. Please log in again."
         onClose={async () => {
           setExpiredVisible(false);
-          await logout();    // now actually clear storage & redirect
+          await logout(); // now actually clear storage & redirect
         }}
       />
       {children}
     </AuthContext.Provider>
   );
-  
 };
-// children is a speical prop  in react that represents whatever  you wrap  inside  a component. 
+// children is a speical prop  in react that represents whatever  you wrap  inside  a component.
 
 //____________________________________________________________________
 /* 4) Helper: JWT expiry check                                      */
