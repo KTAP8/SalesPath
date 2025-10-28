@@ -1622,7 +1622,7 @@ def dialogflow_webhook():
             customer_name = req.get('queryResult', {}).get(
                 'parameters', {}).get('customer_name')
             return jsonify({
-                'fulfillmentText': f"รับทราบชื่อลูกค้า: {customer_name} ครับ\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
+                'fulfillmentText': f"👤 รับทราบชื่อลูกค้า: {customer_name}\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
                 'outputContexts': [make_ctx("awaiting_customer_city", 5, {"customer_name": customer_name})]
             })
 
@@ -1630,7 +1630,7 @@ def dialogflow_webhook():
             city = req.get('queryResult', {}).get('parameters', {}).get('city')
             customer_name = get_param_from_contexts('customer_name')
             return jsonify({
-                'fulfillmentText': f"ลูกค้า {customer_name} อยู่ที่ {city} ครับ กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
+                'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
                 'outputContexts': [make_ctx("awaiting_customer_subregion", 5, {
                     "city": city, "customer_name": customer_name
                 })]
@@ -1641,17 +1641,54 @@ def dialogflow_webhook():
                 'parameters', {}).get('subregion')
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
+            return jsonify({
+                'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n🗺️ เขต/อำเภอ {subregion}\nกรุณาระบุเบอร์โทรศัพท์ติดต่อของลูกค้าด้วยครับ (เฉพาะตัวเลข)",
+                'outputContexts': [make_ctx("awaiting_customer_phone", 5, {
+                    "customer_name": customer_name, "city": city, "subregion": subregion
+                })]
+            })
+
+        elif intent == 'GetCustomerPhone':
+            phone = req.get('queryResult', {}).get(
+                'parameters', {}).get('customer_phone')
+
+            # Get other parameters from context
+            customer_name = get_param_from_contexts('customer_name')
+            city = get_param_from_contexts('city')
+            subregion = get_param_from_contexts('subregion')
+
+            # --- VALIDATION LOGIC ---
+            if not phone or not phone.isdigit():
+                # VALIDATION FAILED: Ask again
+                return jsonify({
+                    'fulfillmentText': "ขออภัยครับ กรุณาระบุเบอร์โทรศัพท์เป็นตัวเลขเท่านั้น (เช่น 0812345678) ครับ",
+                    'outputContexts': [make_ctx("awaiting_customer_phone", 5, {
+                        # Pass the parameters back into the context
+                        "customer_name": customer_name,
+                        "city": city,
+                        "subregion": subregion,
+                    })]
+                })
+
+            # --- VALIDATION SUCCEEDED: Proceed to confirmation ---
+
+            # Build the confirmation text
             response_text = (
                 f"คุณได้ระบุข้อมูลดังนี้:\n"
                 f"👤 ชื่อลูกค้า: {customer_name}\n"
                 f"📍 ภูมิภาค: {city}\n"
                 f"🗺️ เขต/อำเภอ: {subregion}\n"
+                f"📞 เบอร์โทร: {phone}\n"
                 "กรุณายืนยันข้อมูล: ใช่ หรือ ไม่ใช่?"
             )
+
             return jsonify({
                 'fulfillmentText': response_text,
                 'outputContexts': [make_ctx("awaiting_confirmation_new_customer", 5, {
-                    "customer_name": customer_name, "city": city, "subregion": subregion
+                    "customer_name": customer_name,
+                    "city": city,
+                    "subregion": subregion,
+                    "phone": phone
                 })]
             })
 
