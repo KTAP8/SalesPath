@@ -1605,15 +1605,27 @@ def dialogflow_webhook():
         if intent == "AskCustomerType":
             customer_type = req.get('queryResult', {}).get(
                 'parameters', {}).get('customer_type')
+
+            # --- START MODIFICATION ---
+            # 1. Get salesperson info from the incoming context
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 2. Prepare the parameters to pass to the *next* context
+            next_context_params = {
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END MODIFICATION ---
             if customer_type == "ใหม่":
                 return jsonify({
                     'fulfillmentText': "ขอทราบชื่อลูกค้าใหม่ของคุณครับ",
-                    'outputContexts': [make_ctx("awaiting_customer_name", 5)]
+                    'outputContexts': [make_ctx("awaiting_customer_name", 5, next_context_params)]
                 })
             elif customer_type == "เดิม":
                 return jsonify({
                     'fulfillmentText': "กรุณาระบุรหัสลูกค้าของคุณครับ",
-                    'outputContexts': [make_ctx("awaiting_client_id", 5)]
+                    'outputContexts': [make_ctx("awaiting_client_id", 5, next_context_params)]
                 })
             else:
                 return jsonify({'fulfillmentText': "กรุณาระบุว่าเป็นลูกค้าใหม่หรือเดิมครับ"})
@@ -1621,19 +1633,41 @@ def dialogflow_webhook():
         elif intent == "GetCustomerName":
             customer_name = req.get('queryResult', {}).get(
                 'parameters', {}).get('customer_name')
+            # --- START MODIFICATION ---
+            # 1. Get salesperson info from the incoming context
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 2. Prepare the parameters to pass to the *next* context
+            next_context_params = {
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END MODIFICATION ---
             return jsonify({
                 'fulfillmentText': f"👤 รับทราบชื่อลูกค้า: {customer_name}\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
-                'outputContexts': [make_ctx("awaiting_customer_city", 5, {"customer_name": customer_name})]
+                'outputContexts': [make_ctx("awaiting_customer_city", 5, {"customer_name": customer_name}, next_context_params)]
             })
 
         elif intent == "GetCustomerCity":
             city = req.get('queryResult', {}).get('parameters', {}).get('city')
             customer_name = get_param_from_contexts('customer_name')
+            # --- START MODIFICATION ---
+            # 1. Get salesperson info from the incoming context
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 2. Prepare the parameters to pass to the *next* context
+            next_context_params = {
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END MODIFICATION ---
             return jsonify({
                 'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
                 'outputContexts': [make_ctx("awaiting_customer_subregion", 5, {
-                    "city": city, "customer_name": customer_name
-                })]
+                    "city": city, "customer_name": customer_name,
+                }, next_context_params)]
             })
 
         elif intent == "GetCustomerSubregion":
@@ -1641,11 +1675,22 @@ def dialogflow_webhook():
                 'parameters', {}).get('subregion')
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
+            # --- START MODIFICATION ---
+            # 1. Get salesperson info from the incoming context
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 2. Prepare the parameters to pass to the *next* context
+            next_context_params = {
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END MODIFICATION ---
             return jsonify({
                 'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n🗺️ เขต/อำเภอ {subregion}\nกรุณาระบุเบอร์โทรศัพท์ติดต่อของลูกค้าด้วยครับ (เฉพาะตัวเลข)",
                 'outputContexts': [make_ctx("awaiting_customer_phone", 5, {
                     "customer_name": customer_name, "city": city, "subregion": subregion
-                })]
+                }, next_context_params)]
             })
 
         elif intent == 'GetCustomerPhone':
@@ -1656,6 +1701,17 @@ def dialogflow_webhook():
             customer_name = get_param_from_contexts('customer_name')
             city = get_param_from_contexts('city')
             subregion = get_param_from_contexts('subregion')
+            # --- START MODIFICATION ---
+            # 1. Get salesperson info from the incoming context
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 2. Prepare the parameters to pass to the *next* context
+            next_context_params = {
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END MODIFICATION ---
 
             # --- VALIDATION LOGIC ---
             if not phone or not phone.isdigit():
@@ -1667,7 +1723,7 @@ def dialogflow_webhook():
                         "customer_name": customer_name,
                         "city": city,
                         "subregion": subregion,
-                    })]
+                    }, next_context_params)]
                 })
 
             # --- VALIDATION SUCCEEDED: Proceed to confirmation ---
@@ -1696,47 +1752,116 @@ def dialogflow_webhook():
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
             subregion = get_param_from_contexts("subregion")
+            phone = get_param_from_contexts("phone")  # <-- Get the phone
 
-            # Prefer the salesperson_name from context if available
             sales_person_name = get_param_from_contexts(
                 "salesperson_name") or get_line_user_id()
+            salesperson_id = get_param_from_contexts(
+                "salesperson_id")  # <-- Get salesperson_id
 
             session = None
             try:
                 engine = db.get_engine(current_app, bind='touchdb', connect_args={
-                                       "connect_timeout": 3})
+                    "connect_timeout": 3})
                 session = Session(engine)
 
                 new_prospect = Prospect(
-                    ProspectId=customer_name,
+                    # ProspectNum is auto-generated
+                    ProspectId=customer_name,  # Assuming this column exists
                     ProspectReg=city,
                     ProspectSubReg=subregion,
+                    Phone=phone,  # <-- Save the phone
                     SalesName=sales_person_name
                 )
 
                 session.add(new_prospect)
                 session.commit()
+
+                saved_prospect_id = new_prospect.ProspectNum
                 session.close()
 
+                # --- START MODIFICATION ---
+
+                # 1. Create the success message
+                success_message = (
+                    f"✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว\n"
+                    f"รหัสอ้างอิง (ProspectNum): {saved_prospect_id}"
+                )
+
+                # 2. Ask the new question
                 return jsonify({
-                    # 'fulfillmentText': "✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว",
-                    'followupEventInput': {
-                        'name': 'EVENT_RESTART',  # Must match event in StartVisit intent
-                        'parameters': {
-                            'restart_message': "✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว"
-                        }
-                    }
+                    'fulfillmentText': f"{success_message}\n\nคุณต้องการบันทึก 'การขาย' (Sale) สำหรับลูกค้านี้เลยหรือไม่? (ใช่ / ไม่ใช่)",
+                    'outputContexts': [make_ctx("awaiting_add_sales_to_prospect", 2, {
+                        # Pass all the data needed for the *next* step
+                        "clientId": customer_name,  # Use ProspectNum as the ClientId for the visit
+                        "salesperson_id": salesperson_id,
+                        "salesperson_name": sales_person_name,
+                        "success_message": success_message  # To show if they say "no"
+                    })]
                 })
+                # --- END MODIFICATION ---
 
             except OperationalError as e:
                 print("❌ Database timeout or connection error:", e)
                 return jsonify({'fulfillmentText': "❌ ระบบตอบสนองช้า กรุณาลองใหม่ในอีกสักครู่ครับ"})
             except Exception as e:
-                print("❌ General error:", e)
+                import traceback
+                traceback.print_exc()
                 return jsonify({'fulfillmentText': "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"})
             finally:
                 if session:
                     session.close()
+
+        # =========================================================
+        # NEW: Handle "Yes" to adding sales to the new prospect
+        # =========================================================
+        # --- ADD THIS NEW VERSION ---
+        elif intent == "HandleAddSalesToProspect - yes":
+
+            # 1. Define the hardcoded note
+            hardcoded_note = "ลูกค้าใหม่ ยังไม่อยู่ในฐานข้อมูล"
+
+            # 2. Define the sales prompt (copied from your ProvideActivityNote)
+            sales_prompt = (
+                "กรุณาระบุของที่คุณขายโดยการขึ้นบรรทัดใหม่ (เท่านั้น):\n"
+                "สินค้า:จำนวน\n"
+                "สินค้า:จำนวน\n"
+                "ตัวอย่างเช่น:\n"
+                "สินค้า A B:10\n"
+                "สินค้า C:50"
+            )
+
+            # 3. Return the new response, skipping the note step
+            return jsonify({
+                'fulfillmentText': sales_prompt,  # Ask for sales items directly
+                'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
+                    # Get all data from the previous context
+                    "clientId": get_param_from_contexts("clientId"),
+                    "salesperson_id": get_param_from_contexts("salesperson_id"),
+                    "salesperson_name": get_param_from_contexts("salesperson_name"),
+                    # Add the new hardcoded data
+                    "activityType": "ขาย",
+                    "activityNote": hardcoded_note,
+                })]
+            })
+
+        # =========================================================
+        # NEW: Handle "No" to adding sales to the new prospect
+        # =========================================================
+        elif intent == "HandleAddSalesToProspect - no":
+            # This intent just restarts the conversation
+            lang_code = req.get('queryResult', {}).get('languageCode', 'th-TH')
+
+            return jsonify({
+                'followupEventInput': {
+                    'name': 'EVENT_RESTART',
+                    'languageCode': lang_code,
+                    'parameters': {
+                        # Get the success message we saved in the context
+                        'restart_message': get_param_from_contexts("success_message") or "บันทึกเรียบร้อยแล้ว"
+                    }
+                }
+            })
 
         elif intent == "GetClientId":
             clientId = req.get('queryResult', {}).get(
@@ -1754,7 +1879,7 @@ def dialogflow_webhook():
                     return jsonify({
                         'fulfillmentText': (
                             "พบลูกค้าในระบบ ✅\nกรุณาระบุกิจกรรมที่คุณทำ:\n"
-                            "🛍️ ขาย\n🤝 ความสัมพันธ์ลูกค้า\n🐞 แจ้งปัญหา\n(เท่านั้น)"
+                            "(1)🛍️ ขาย\n(2)🤝 ความสัมพันธ์ลูกค้า\n(3)🐞 แจ้งปัญหา\n(กรอก ตัวเลข เท่านั้น)"
                         ),
                         'outputContexts': [make_ctx("awaiting_activity_type", 5, {
                             "clientId": clientId,
@@ -1769,16 +1894,51 @@ def dialogflow_webhook():
                 return jsonify({'fulfillmentText': "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูลครับ"})
 
         elif intent == "AskActivityType":
-            activity_type = req.get('queryResult', {}).get(
-                'parameters', {}).get('activity_type')
+            # 1. สร้างตัวแปรสำหรับ "แปล" ตัวเลขเป็นข้อความ
+            activity_map = {
+                "1": "ขาย",
+                "2": "ความสัมพันธ์ลูกค้า",
+                "3": "แจ้งปัญหา"
+            }
+
+            # 2. ดึงค่าตัวเลขที่ผู้ใช้พิมพ์เข้ามา
+            activity_input = int(req.get('queryResult', {}).get(
+                'parameters', {}).get('activity_type'))
+            print('activity_input:', type(activity_input), activity_input)
+
+            # 3. แปลงตัวเลขเป็นข้อความ
+            #    (เราใช้ .get() ซึ่งจะคืนค่า None หากไม่พบใน map)
+            activity_text = activity_map.get(str(activity_input))
+
+            # 4. ดึง clientId และข้อมูลเซลส์จาก context
             clientId = get_param_from_contexts("clientId")
+            salesperson_id = get_param_from_contexts("salesperson_id")
+            salesperson_name = get_param_from_contexts("salesperson_name")
+
+            # 5. ตรวจสอบว่าผู้ใช้พิมพ์ 1, 2, หรือ 3 หรือไม่
+            if not activity_text:
+                # --- VALIDATION FAILED: ถ้าไม่ใช่ 1, 2, 3 ให้ถามใหม่ ---
+                return jsonify({
+                    'fulfillmentText': (
+                        "❌ กรุณากรอกเฉพาะตัวเลข 1, 2, หรือ 3 เท่านั้นครับ\n\n"
+                        "(1)🛍️ ขาย\n(2)🤝 ความสัมพันธ์ลูกค้า\n(3)🐞 แจ้งปัญหา"
+                    ),
+                    'outputContexts': [make_ctx("awaiting_activity_type", 5, {
+                        # ส่งค่าเดิมกลับเข้าไปใน context เพื่อให้วนลูปถามใหม่
+                        "clientId": clientId,
+                        "salesperson_id": salesperson_id,
+                        "salesperson_name": salesperson_name
+                    })]
+                })
+
+            # --- VALIDATION SUCCEEDED: ถ้าใช่ ให้ไปต่อ ---
             return jsonify({
-                'fulfillmentText': f"กิจกรรม: {activity_type} ✅\nกรุณาระบุหมายเหตุ/ข้อมูลสำหรับกิจกรรมนี้ครับ",
+                'fulfillmentText': f"กิจกรรม: {activity_text} ✅\nกรุณาระบุหมายเหตุ/ข้อมูลสำหรับกิจกรรมนี้ครับ",
                 'outputContexts': [make_ctx("awaiting_activity_note", 5, {
                     "clientId": clientId,
-                    "activityType": activity_type,
-                    "salesperson_id": get_param_from_contexts("salesperson_id"),
-                    "salesperson_name": get_param_from_contexts("salesperson_name")
+                    "activityType": activity_text,  # <-- ✨ สำคัญ: เราส่ง "ข้อความที่แปลแล้ว" ไปต่อ
+                    "salesperson_id": salesperson_id,
+                    "salesperson_name": salesperson_name
                 })]
             })
 
@@ -1797,15 +1957,24 @@ def dialogflow_webhook():
                         "salesperson_name": get_param_from_contexts("salesperson_name")
                     })]
                 })
+            # --- START MODIFICATION ---
             elif activityType == 'ขาย':
                 return jsonify({
-                    'fulfillmentText': "กรุณาระบุของที่คุณขายในรูปแบบนี้(เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\nเช่น สินค้าA:10, สินค้าB:50",
+                    'fulfillmentText': (
+                        "กรุณาระบุของที่คุณขายโดยการขึ้นบรรทัดใหม่ (เท่านั้น):\n"
+                        "สินค้า:จำนวน\n"
+                        "สินค้า:จำนวน\n"
+                        "ตัวอย่างเช่น:\n"
+                        "สินค้า A B:10\n"
+                        "สินค้า C:50"
+                    ),
                     'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
                         "clientId": clientId, "activityType": activityType, "activityNote": activity_note,
                         "salesperson_id": get_param_from_contexts("salesperson_id"),
                         "salesperson_name": get_param_from_contexts("salesperson_name")
                     })]
                 })
+            # --- END MODIFICATION ---
             else:
                 return jsonify({
                     'fulfillmentText': (
@@ -1829,27 +1998,69 @@ def dialogflow_webhook():
             activityType = get_param_from_contexts("activityType")
             activityNote = get_param_from_contexts("activityNote")
 
-            pattern = r'^(\s*\S+\s*:\s*\d+\s*)(,\s*\S+\s*:\s*\d+\s*)*$'
+            # --- START DEBUGGING ---
+            print("==================================================")
+            print(
+                f"DEBUG: RAW STRING RECEIVED:\n---START---\n{sales_detail}\n---END---")
+            print(f"DEBUG: STRING REPR: {repr(sales_detail)}")
+            print(f"DEBUG: STRING ENCODED: {sales_detail.encode('utf-8')}")
+            print("==================================================")
+            # --- END DEBUGGING ---
+
+            # --- START MODIFICATION ---
+            # Sanitize newlines: replace \r\n and \r with just \n
+            if sales_detail:
+                sales_detail = sales_detail.replace(
+                    "\r\n", "\n").replace("\r", "\n")
+            # --- END MODIFICATION ---
+
+            # --- START MODIFICATION ---
+            # This regex now uses '\s+' (one or more spaces) as the separator
+            pattern = r'^\s*([^\:]+\s*:\s*\d+)(\s+[^\:]+\s*:\s*\d+)*\s*$'
+            # --- END MODIFICATION ---
             if not sales_detail or not re.match(pattern, sales_detail):
+                # --- This is the error you are getting ---
+                print(
+                    f"DEBUG: REGEX FAILED on sanitized string: {repr(sales_detail.strip())}")
+               # --- START MODIFICATION ---
+                # Update the error message to show space separation
                 return jsonify({
                     'fulfillmentText': (
                         "❌ รูปแบบข้อมูลไม่ถูกต้องครับ\n"
-                        "กรุณาระบุของที่คุณขายในรูปแบบนี้ (เท่านั้น):\nสินค้าA:จำนวน, สินค้าB:จำนวน\n"
-                        "ตัวอย่างเช่น: สินค้าA:10, สินค้าB:50"
+                        "กรุณาระบุของที่คุณขายโดยการเว้นวรรค (เท่านั้น):\n"
+                        "ตัวอย่างเช่น:\n"
+                        "สินค้า A B:10 สินค้า C:50"
                     ),
                     'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
-                        "clientId": clientId, "activityType": activityType, "activityNote": activityNote
+                        "clientId": clientId,
+                        "activityType": activityType,
+                        "activityNote": activityNote,
+                        "salesperson_id": get_param_from_contexts("salesperson_id"),
+                        "salesperson_name": get_param_from_contexts("salesperson_name")
                     })]
                 })
+                # --- END MODIFICATION ---
+
+            # --- START MODIFICATION ---
+            # Use re.findall() to find all matching items
+            # This correctly handles spaces in product names
+            items_for_display = re.findall(
+                r'[^\:]+\s*:\s*\d+', sales_detail.strip())
+
+            # Join the list of full items with a newline
+            display_text = "\n".join(items_for_display)
 
             confirmation_text = (
                 f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
                 f"📄 รหัสลูกค้า: {clientId}\n"
                 f"📌 กิจกรรม: {activityType}\n"
+                # Note: This is the original note
                 f"📝 หมายเหตุ: {activityNote}\n"
-                f"🛍️ รายการขาย: {sales_detail}\n"
+                # This now shows the correct list
+                f"🛍️ รายการขาย:\n{display_text}\n"
                 "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
             )
+            # --- END MODIFICATION ---
 
             return jsonify({
                 'fulfillmentText': confirmation_text,
@@ -1894,20 +2105,34 @@ def dialogflow_webhook():
             problemNote = get_param_from_contexts("problemNote")
             raw_sales_detail = get_param_from_contexts("salesDetail")
 
+            # --- START MODIFICATION ---
             def parse_sales_detail(text):
                 try:
                     sales_dict = {}
                     if not text:
                         return None
-                    items = text.split(",")
+
+                    # 1. Use re.findall() to get a list of items
+                    # e.g., ['สินค้า A B:10', 'สินค้า C:50']
+                    items = re.findall(r'[^\:]+\s*:\s*\d+', text.strip())
+
+                    # 2. Loop through the full items
                     for item in items:
-                        name, amount = item.strip().split(":")
-                        sales_dict[name.strip()] = int(amount.strip())
+                        # 3. Use re.match to parse each full item
+                        match = re.match(r'^(.+?)\s*:\s*(\d+)$', item.strip())
+
+                        if match:
+                            name = match.group(1).strip()
+                            amount = int(match.group(2).strip())
+                            sales_dict[name] = amount
+                        else:
+                            print(f"❌ Error parsing sales item line: {item}")
+
                     return sales_dict
                 except Exception as e:
                     print("❌ Error parsing sales detail:", e)
                     return None
-
+            # --- END MODIFICATION ---
             sales_json = parse_sales_detail(raw_sales_detail)
             visit_datetime = datetime.now()
 
@@ -1934,14 +2159,25 @@ def dialogflow_webhook():
                 )
                 session.add(new_visit)
                 session.commit()
+                # --- START MODIFICATION ---
+
+                # 1. Get the ID from the object after commit
+                # (Use the exact attribute name from your 'Visit' model)
+                saved_visit_id = new_visit.VisitId
+
                 session.close()
+
+                success_message = (
+                    f"✅ บันทึกข้อมูลเรียบร้อยแล้ว\n"
+                    f"รหัสอ้างอิง (Visit ID): {saved_visit_id}"
+                )
 
                 return jsonify({
                     # 'fulfillmentText': "✅ บันทึกข้อมูลเรียบร้อยแล้ว กรุณาพิมพ์ เริ่มต้น อีกครั้งเพื่อทำการจดครั้งต่อไป",
                     'followupEventInput': {
                         'name': 'EVENT_RESTART',  # Must match event in StartVisit intent
                         'parameters': {
-                            'restart_message': "✅ บันทึกข้อมูลเรียบร้อยแล้ว"
+                            'restart_message': success_message
                         }
                     }
                 })

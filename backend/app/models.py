@@ -122,6 +122,7 @@ class Prospect(db.Model):
     ProspectReg = db.Column(db.String(255))
     ProspectSubReg = db.Column(db.String(255))
     SalesName = db.Column(db.String(255))
+    Phone = db.Column(db.String(255))
 
     def to_dict(self):
         return {
@@ -130,6 +131,7 @@ class Prospect(db.Model):
             "ProspectReg": self.ProspectReg,
             "ProspectSubReg": self.ProspectSubReg,
             "SalesName": self.SalesName,
+            "Phone": self.Phone
         }
 
 
