@@ -450,7 +450,7 @@ from sqlalchemy import tuple_
 from .models import Visit, Client, Invoice, Prospect, SalesMan, Auth_Users
 from flask import request, jsonify, Blueprint, current_app, make_response
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, text
+from sqlalchemy import and_, func
 from datetime import datetime
 from . import db
 from werkzeug.security import generate_password_hash
@@ -481,6 +481,9 @@ from flask import Response
 
 from decimal import Decimal
 from io import StringIO
+
+from sqlalchemy import text as sa_text
+
 
 main = Blueprint("main", __name__)
 
@@ -535,7 +538,7 @@ def test_connection():
     try:
         engine = db.get_engine(app=None, bind="touchdb")
         with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+            conn.execute(sa_text("SELECT 1"))
         return "✅ Connected to PostgreSQL (touchdb) successfully!"
     except Exception as e:
         return f"❌ Failed to connect to db: {str(e)}"
@@ -1496,7 +1499,7 @@ def dialogflow_webhook():
             engine = db.get_engine(current_app, bind='touchdb', connect_args={
                                    "connect_timeout": 3})
             with engine.connect() as conn:
-                res = conn.execute(text("""
+                res = conn.execute(sa_text("""
                     SELECT s.saleperson_id, s.name
                     FROM salesperson_lineId sl
                     JOIN salesperson s ON s.saleperson_id = sl.saleperson_id
@@ -1509,13 +1512,25 @@ def dialogflow_webhook():
             engine = db.get_engine(current_app, bind='touchdb', connect_args={
                                    "connect_timeout": 3})
             with engine.connect() as conn:
-                res = conn.execute(text("""
+                res = conn.execute(sa_text("""
                     SELECT s.saleperson_id, s.name
                     FROM salesperson s
                     WHERE s.saleperson_id = :sid
                     LIMIT 1
                 """), {"sid": saleperson_id}).mappings().first()
                 return dict(res) if res else None
+        def get_raw_user_text(req):
+            # 1) Dialogflow raw text
+            qtext = (req.get('queryResult', {}) or {}).get('queryText')
+
+            # 2) LINE payload (Dialogflow v2)
+            line_text = (req.get('originalDetectIntentRequest', {}) or {}) \
+                        .get('payload', {}) \
+                        .get('data', {}) \
+                        .get('message', {}) \
+                        .get('text')
+
+            return (line_text or qtext or "").strip()
 
         # =========================================================
         # NEW: startVisit gate
@@ -1992,85 +2007,82 @@ def dialogflow_webhook():
                 })
 
         elif intent == "ProvideSalesDetail":
-            sales_detail = req.get('queryResult', {}).get(
-                'parameters', {}).get('sales_detail')
-            clientId = get_param_from_contexts("clientId")
-            activityType = get_param_from_contexts("activityType")
-            activityNote = get_param_from_contexts("activityNote")
+            # ⛔️ Don't trust the parameter for newlines
+            raw_text = get_raw_user_text(req)
 
-            # --- START DEBUGGING ---
-            print("==================================================")
-            print(
-                f"DEBUG: RAW STRING RECEIVED:\n---START---\n{sales_detail}\n---END---")
-            print(f"DEBUG: STRING REPR: {repr(sales_detail)}")
-            print(f"DEBUG: STRING ENCODED: {sales_detail.encode('utf-8')}")
-            print("==================================================")
-            # --- END DEBUGGING ---
+            import re
+            msg = raw_text
+            msg = msg.replace("\r\n", "\n").replace("\r", "\n")
+            msg = msg.replace("\u2028", "\n").replace("\u2029", "\n")
+            msg = re.sub(r"[\u200B\u200C\u200D\uFEFF]", "", msg)
+            msg = msg.strip()
 
-            # --- START MODIFICATION ---
-            # Sanitize newlines: replace \r\n and \r with just \n
-            if sales_detail:
-                sales_detail = sales_detail.replace(
-                    "\r\n", "\n").replace("\r", "\n")
-            # --- END MODIFICATION ---
+            lines = [ln.strip() for ln in re.split(r"\n+", msg) if ln.strip()]
+            line_re = re.compile(r'^[^:\n]+:\s*\d+$')
 
-            # --- START MODIFICATION ---
-            # This regex now uses '\s+' (one or more spaces) as the separator
-            pattern = r'^\s*([^\:]+\s*:\s*\d+)(\s+[^\:]+\s*:\s*\d+)*\s*$'
-            # --- END MODIFICATION ---
-            if not sales_detail or not re.match(pattern, sales_detail):
-                # --- This is the error you are getting ---
-                print(
-                    f"DEBUG: REGEX FAILED on sanitized string: {repr(sales_detail.strip())}")
-               # --- START MODIFICATION ---
-                # Update the error message to show space separation
+            if not lines:
                 return jsonify({
                     'fulfillmentText': (
                         "❌ รูปแบบข้อมูลไม่ถูกต้องครับ\n"
-                        "กรุณาระบุของที่คุณขายโดยการเว้นวรรค (เท่านั้น):\n"
-                        "ตัวอย่างเช่น:\n"
-                        "สินค้า A B:10 สินค้า C:50"
+                        "พิมพ์แบบบรรทัดละ 1 รายการ: `สินค้า:จำนวน`\n"
+                        "ตัวอย่าง:\n"
+                        "6201-2NSE:280\n6905:30\n60/22X1-2NSE:20"
                     ),
                     'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
-                        "clientId": clientId,
-                        "activityType": activityType,
-                        "activityNote": activityNote,
+                        "clientId": get_param_from_contexts("clientId"),
+                        "activityType": get_param_from_contexts("activityType"),
+                        "activityNote": get_param_from_contexts("activityNote"),
                         "salesperson_id": get_param_from_contexts("salesperson_id"),
                         "salesperson_name": get_param_from_contexts("salesperson_name")
                     })]
                 })
-                # --- END MODIFICATION ---
 
-            # --- START MODIFICATION ---
-            # Use re.findall() to find all matching items
-            # This correctly handles spaces in product names
-            items_for_display = re.findall(
-                r'[^\:]+\s*:\s*\d+', sales_detail.strip())
+            bad_idx = next((i for i, ln in enumerate(lines) if not line_re.match(ln)), None)
+            if bad_idx is not None:
+                bad_line = lines[bad_idx]
+                return jsonify({
+                    'fulfillmentText': (
+                        "❌ รูปแบบข้อมูลไม่ถูกต้องครับ\n"
+                        f"- บรรทัดที่ {bad_idx+1} ไม่ถูกต้อง: `{bad_line}`\n"
+                        "ใช้ `สินค้า:จำนวน` โดยจำนวนเป็นตัวเลขเท่านั้น"
+                    ),
+                    'outputContexts': [make_ctx("awaiting_sales_detail", 5, {
+                        "clientId": get_param_from_contexts("clientId"),
+                        "activityType": get_param_from_contexts("activityType"),
+                        "activityNote": get_param_from_contexts("activityNote"),
+                        "salesperson_id": get_param_from_contexts("salesperson_id"),
+                        "salesperson_name": get_param_from_contexts("salesperson_name")
+                    })]
+                })
 
-            # Join the list of full items with a newline
-            display_text = "\n".join(items_for_display)
+            # Parse + confirm
+            items = []
+            for ln in lines:
+                name, qty = ln.split(":", 1)
+                items.append((name.strip(), int(qty.strip())))
 
-            confirmation_text = (
-                f"กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
-                f"📄 รหัสลูกค้า: {clientId}\n"
-                f"📌 กิจกรรม: {activityType}\n"
-                # Note: This is the original note
-                f"📝 หมายเหตุ: {activityNote}\n"
-                # This now shows the correct list
-                f"🛍️ รายการขาย:\n{display_text}\n"
-                "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
-            )
-            # --- END MODIFICATION ---
+            display_text = "\n".join(f"{n}:{q}" for n, q in items)
 
             return jsonify({
-                'fulfillmentText': confirmation_text,
+                'fulfillmentText': (
+                    "กรุณายืนยันข้อมูลนี้อีกครั้ง:\n"
+                    f"📄 รหัสลูกค้า: {get_param_from_contexts('clientId')}\n"
+                    f"📌 กิจกรรม: {get_param_from_contexts('activityType')}\n"
+                    f"📝 หมายเหตุ: {get_param_from_contexts('activityNote')}\n"
+                    f"🛍️ รายการขาย:\n{display_text}\n"
+                    "ข้อมูลถูกต้องใช่หรือไม่? (ใช่ / ไม่ใช่)"
+                ),
                 'outputContexts': [make_ctx("awaiting_confirmation_existing_customer", 5, {
-                    "clientId": clientId, "activityType": activityType, "activityNote": activityNote,
-                    "salesDetail": sales_detail,
+                    "clientId": get_param_from_contexts("clientId"),
+                    "activityType": get_param_from_contexts("activityType"),
+                    "activityNote": get_param_from_contexts("activityNote"),
+                    "salesDetail": "\n".join(f"{n}:{q}" for n, q in items),
                     "salesperson_id": get_param_from_contexts("salesperson_id"),
                     "salesperson_name": get_param_from_contexts("salesperson_name")
                 })]
             })
+
+
 
         elif intent == "ProvideProblemNote":
             problem_note = req.get('queryResult', {}).get(
@@ -2099,54 +2111,48 @@ def dialogflow_webhook():
             })
 
         elif intent == "ConfirmExistingCustomerActivity - yes":
+            from datetime import datetime
+
             clientId = get_param_from_contexts("clientId")
             activityType = get_param_from_contexts("activityType")
             activityNote = get_param_from_contexts("activityNote")
             problemNote = get_param_from_contexts("problemNote")
-            raw_sales_detail = get_param_from_contexts("salesDetail")
 
-            # --- START MODIFICATION ---
-            def parse_sales_detail(text):
+            raw_sales_detail = get_param_from_contexts("salesDetail") or ""
+            print("DEBUG salesDetail raw:", repr(raw_sales_detail))
+
+            def parse_sales_detail(sales_str):
+                import re
                 try:
                     sales_dict = {}
-                    if not text:
-                        return None
-
-                    # 1. Use re.findall() to get a list of items
-                    # e.g., ['สินค้า A B:10', 'สินค้า C:50']
-                    items = re.findall(r'[^\:]+\s*:\s*\d+', text.strip())
-
-                    # 2. Loop through the full items
+                    if not sales_str:
+                        return {}  # return an empty dict, not None
+                    items = re.findall(r'[^\:]+\s*:\s*\d+', sales_str.strip())
                     for item in items:
-                        # 3. Use re.match to parse each full item
-                        match = re.match(r'^(.+?)\s*:\s*(\d+)$', item.strip())
-
-                        if match:
-                            name = match.group(1).strip()
-                            amount = int(match.group(2).strip())
-                            sales_dict[name] = amount
+                        m = re.match(r'^(.+?)\s*:\s*(\d+)$', item.strip())
+                        if m:
+                            name = m.group(1).strip()
+                            amount = int(m.group(2).strip())
+                            sales_dict[name] = sales_dict.get(name, 0) + amount
                         else:
                             print(f"❌ Error parsing sales item line: {item}")
-
                     return sales_dict
                 except Exception as e:
                     print("❌ Error parsing sales detail:", e)
-                    return None
-            # --- END MODIFICATION ---
-            sales_json = parse_sales_detail(raw_sales_detail)
+                    return {}
+
+            sales_json = parse_sales_detail(raw_sales_detail)  # <-- dict
+            print("DEBUG parsed sales_json:", sales_json, type(sales_json))
+
             visit_datetime = datetime.now()
-
-            activity_map = {
-                "ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
+            activity_map = {"ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
             activity_code = activity_map.get(activityType, activityType)
-            resolved = False if activity_code == "Problem" else True
-
-            # Prefer salesperson_name captured earlier
-            sales_person_name = get_param_from_contexts(
-                "salesperson_name") or get_line_user_id()
+            resolved = (activity_code != "Problem")
+            sales_person_name = get_param_from_contexts("salesperson_name") or get_line_user_id()
 
             try:
                 session = Session(db.get_engine(current_app, bind='touchdb'))
+
                 new_visit = Visit(
                     SalesName=sales_person_name,
                     ClientId=clientId,
@@ -2155,36 +2161,32 @@ def dialogflow_webhook():
                     ProblemNotes=problemNote,
                     Resolved=resolved,
                     VisitDateTime=visit_datetime,
-                    Sales=sales_json
+                    Sales=sales_json          # <-- pass dict directly
                 )
                 session.add(new_visit)
                 session.commit()
-                # --- START MODIFICATION ---
 
-                # 1. Get the ID from the object after commit
-                # (Use the exact attribute name from your 'Visit' model)
+                print("DEBUG stored Sales type:", type(new_visit.Sales), new_visit.Sales)
+
                 saved_visit_id = new_visit.VisitId
-
                 session.close()
 
                 success_message = (
                     f"✅ บันทึกข้อมูลเรียบร้อยแล้ว\n"
                     f"รหัสอ้างอิง (Visit ID): {saved_visit_id}"
                 )
-
                 return jsonify({
-                    # 'fulfillmentText': "✅ บันทึกข้อมูลเรียบร้อยแล้ว กรุณาพิมพ์ เริ่มต้น อีกครั้งเพื่อทำการจดครั้งต่อไป",
                     'followupEventInput': {
-                        'name': 'EVENT_RESTART',  # Must match event in StartVisit intent
-                        'parameters': {
-                            'restart_message': success_message
-                        }
+                        'name': 'EVENT_RESTART',
+                        'parameters': {'restart_message': success_message}
                     }
                 })
             except Exception as e:
                 import traceback
                 traceback.print_exc()
                 return jsonify({'fulfillmentText': "❌ ระบบเกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"})
+
+
 
         elif intent == "ConfirmExistingCustomerActivity - no":
             return jsonify({

@@ -6,13 +6,15 @@ WORKDIR /app
 COPY environment/clean-environment.yml .
 # COPY clean-environment.yml .
 RUN conda update -n base -c defaults conda && \
+    export PIP_NO_CACHE_DIR=true && \
+    export PIP_NO_REQUIRE_HASHES=true && \
     conda env create -f clean-environment.yml
 
 # Activate env by default
 SHELL ["/bin/bash", "-c"]
 
 # Ensure env is available in later RUN/CMD
-ENV PATH /opt/conda/envs/salespathenv/bin:$PATH
+ENV PATH="/opt/conda/envs/salespathenv/bin:$PATH"
 
 # Copy backend and install any extra Python deps
 COPY . .
