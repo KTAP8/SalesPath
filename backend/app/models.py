@@ -123,6 +123,7 @@ class Prospect(db.Model):
     ProspectSubReg = db.Column(db.String(255))
     SalesName = db.Column(db.String(255))
     Phone = db.Column(db.String(255))
+    ProspectDateTime= db.Column(db.DateTime, default=func.now())
 
     def to_dict(self):
         return {
@@ -131,7 +132,8 @@ class Prospect(db.Model):
             "ProspectReg": self.ProspectReg,
             "ProspectSubReg": self.ProspectSubReg,
             "SalesName": self.SalesName,
-            "Phone": self.Phone
+            "Phone": self.Phone,
+            "ProspectDateTime": self.ProspectDateTime.isoformat() if self.ProspectDateTime else None
         }
 
 

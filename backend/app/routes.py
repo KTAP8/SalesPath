@@ -1648,7 +1648,7 @@ def dialogflow_webhook():
         elif intent == "GetCustomerName":
             customer_name = req.get('queryResult', {}).get(
                 'parameters', {}).get('customer_name')
-            # --- START MODIFICATION ---
+            
             # 1. Get salesperson info from the incoming context
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
@@ -1658,31 +1658,43 @@ def dialogflow_webhook():
                 "salesperson_id": salesperson_id,
                 "salesperson_name": salesperson_name
             }
-            # --- END MODIFICATION ---
+
+            # --- START FIX ---
+            # 3. Combine *all* params into one dictionary
+            final_params = {
+                **next_context_params,  # Unpack sales info
+                "customer_name": customer_name # Add the new customer name
+            }
+            # --- END FIX ---
+
             return jsonify({
                 'fulfillmentText': f"👤 รับทราบชื่อลูกค้า: {customer_name}\nกรุณาระบุจังหวัดของลูกค้า เช่น กรุงเทพ หรือ เชียงใหม่ ครับ",
-                'outputContexts': [make_ctx("awaiting_customer_city", 5, {"customer_name": customer_name}, next_context_params)]
+                # 4. Pass the single, merged dictionary as the 3rd argument
+                'outputContexts': [make_ctx("awaiting_customer_city", 5, final_params)]
             })
 
         elif intent == "GetCustomerCity":
             city = req.get('queryResult', {}).get('parameters', {}).get('city')
             customer_name = get_param_from_contexts('customer_name')
-            # --- START MODIFICATION ---
-            # 1. Get salesperson info from the incoming context
+            
+            # 1. Get salesperson info
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
 
-            # 2. Prepare the parameters to pass to the *next* context
-            next_context_params = {
+            # --- START FIX ---
+            # 2. Combine *all* params into one dictionary
+            final_params = {
                 "salesperson_id": salesperson_id,
-                "salesperson_name": salesperson_name
+                "salesperson_name": salesperson_name,
+                "city": city,
+                "customer_name": customer_name
             }
-            # --- END MODIFICATION ---
+            # --- END FIX ---
+
             return jsonify({
                 'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n กรุณาระบุเขต/อำเภอของลูกค้าด้วยครับ",
-                'outputContexts': [make_ctx("awaiting_customer_subregion", 5, {
-                    "city": city, "customer_name": customer_name,
-                }, next_context_params)]
+                # 3. Pass the single, merged dictionary
+                'outputContexts': [make_ctx("awaiting_customer_subregion", 5, final_params)]
             })
 
         elif intent == "GetCustomerSubregion":
@@ -1690,23 +1702,27 @@ def dialogflow_webhook():
                 'parameters', {}).get('subregion')
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
-            # --- START MODIFICATION ---
-            # 1. Get salesperson info from the incoming context
+            
+            # 1. Get salesperson info
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
 
-            # 2. Prepare the parameters to pass to the *next* context
-            next_context_params = {
+            # --- START FIX ---
+            # 2. Combine *all* params into one dictionary
+            final_params = {
                 "salesperson_id": salesperson_id,
-                "salesperson_name": salesperson_name
+                "salesperson_name": salesperson_name,
+                "customer_name": customer_name,
+                "city": city,
+                "subregion": subregion
             }
-            # --- END MODIFICATION ---
+            # --- END FIX ---
+            
             return jsonify({
                 'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n🗺️ เขต/อำเภอ {subregion}\nกรุณาระบุเบอร์โทรศัพท์ติดต่อของลูกค้าด้วยครับ (เฉพาะตัวเลข)",
-                'outputContexts': [make_ctx("awaiting_customer_phone", 5, {
-                    "customer_name": customer_name, "city": city, "subregion": subregion
-                }, next_context_params)]
-            })
+                # 3. Pass the single, merged dictionary
+                'outputContexts': [make_ctx("awaiting_customer_phone", 5, final_params)]
+        })
 
         elif intent == 'GetCustomerPhone':
             phone = req.get('queryResult', {}).get(
@@ -1716,34 +1732,35 @@ def dialogflow_webhook():
             customer_name = get_param_from_contexts('customer_name')
             city = get_param_from_contexts('city')
             subregion = get_param_from_contexts('subregion')
-            # --- START MODIFICATION ---
+            
             # 1. Get salesperson info from the incoming context
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
 
-            # 2. Prepare the parameters to pass to the *next* context
-            next_context_params = {
-                "salesperson_id": salesperson_id,
-                "salesperson_name": salesperson_name
-            }
-            # --- END MODIFICATION ---
-
             # --- VALIDATION LOGIC ---
             if not phone or not phone.isdigit():
+                
+                # --- START FIX (Validation case) ---
+                # Combine *all* params into one dictionary to pass back
+                final_params_on_fail = {
+                    "customer_name": customer_name,
+                    "city": city,
+                    "subregion": subregion,
+                    "salesperson_id": salesperson_id,
+                    "salesperson_name": salesperson_name
+                }
+                # --- END FIX ---
+
                 # VALIDATION FAILED: Ask again
                 return jsonify({
                     'fulfillmentText': "ขออภัยครับ กรุณาระบุเบอร์โทรศัพท์เป็นตัวเลขเท่านั้น (เช่น 0812345678) ครับ",
-                    'outputContexts': [make_ctx("awaiting_customer_phone", 5, {
-                        # Pass the parameters back into the context
-                        "customer_name": customer_name,
-                        "city": city,
-                        "subregion": subregion,
-                    }, next_context_params)]
+                    'outputContexts': [make_ctx("awaiting_customer_phone", 5, final_params_on_fail)]
                 })
 
             # --- VALIDATION SUCCEEDED: Proceed to confirmation ---
 
-            # Build the confirmation text
+            # --- START FIX (Build response_text) ---
+            # This is the block you correctly identified was missing
             response_text = (
                 f"คุณได้ระบุข้อมูลดังนี้:\n"
                 f"👤 ชื่อลูกค้า: {customer_name}\n"
@@ -1752,27 +1769,37 @@ def dialogflow_webhook():
                 f"📞 เบอร์โทร: {phone}\n"
                 "กรุณายืนยันข้อมูล: ใช่ หรือ ไม่ใช่?"
             )
+            # --- END FIX ---
+
+            # --- START FIX (Success case) ---
+            # 2. Combine *all* params for the *confirmation* step
+            final_params_on_success = {
+                "customer_name": customer_name,
+                "city": city,
+                "subregion": subregion,
+                "phone": phone,
+                "salesperson_id": salesperson_id,
+                "salesperson_name": salesperson_name
+            }
+            # --- END FIX ---
 
             return jsonify({
                 'fulfillmentText': response_text,
-                'outputContexts': [make_ctx("awaiting_confirmation_new_customer", 5, {
-                    "customer_name": customer_name,
-                    "city": city,
-                    "subregion": subregion,
-                    "phone": phone
-                })]
+                'outputContexts': [make_ctx("awaiting_confirmation_new_customer", 5, final_params_on_success)]
             })
 
         elif intent == "ConfirmNewCustomer":
+            # from datetime import datetime  <-- We don't need this anymore
+    
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
             subregion = get_param_from_contexts("subregion")
-            phone = get_param_from_contexts("phone")  # <-- Get the phone
+            phone = get_param_from_contexts("phone") 
 
             sales_person_name = get_param_from_contexts(
                 "salesperson_name") or get_line_user_id()
             salesperson_id = get_param_from_contexts(
-                "salesperson_id")  # <-- Get salesperson_id
+                "salesperson_id")  
 
             session = None
             try:
@@ -1780,13 +1807,16 @@ def dialogflow_webhook():
                     "connect_timeout": 3})
                 session = Session(engine)
 
+                # current_time = datetime.now() <-- We don't need this anymore
+
                 new_prospect = Prospect(
                     # ProspectNum is auto-generated
-                    ProspectId=customer_name,  # Assuming this column exists
+                    ProspectId=customer_name,  
                     ProspectReg=city,
                     ProspectSubReg=subregion,
-                    Phone=phone,  # <-- Save the phone
+                    Phone=phone,  
                     SalesName=sales_person_name
+                    # ProspectDateTime is now set by the database by default
                 )
 
                 session.add(new_prospect)
@@ -1795,26 +1825,22 @@ def dialogflow_webhook():
                 saved_prospect_id = new_prospect.ProspectNum
                 session.close()
 
-                # --- START MODIFICATION ---
+                # --- (The rest of the intent remains exactly the same) ---
 
-                # 1. Create the success message
                 success_message = (
                     f"✅ บันทึกข้อมูลลูกค้าใหม่เรียบร้อยแล้ว\n"
                     f"รหัสอ้างอิง (ProspectNum): {saved_prospect_id}"
                 )
 
-                # 2. Ask the new question
                 return jsonify({
                     'fulfillmentText': f"{success_message}\n\nคุณต้องการบันทึก 'การขาย' (Sale) สำหรับลูกค้านี้เลยหรือไม่? (ใช่ / ไม่ใช่)",
                     'outputContexts': [make_ctx("awaiting_add_sales_to_prospect", 2, {
-                        # Pass all the data needed for the *next* step
-                        "clientId": customer_name,  # Use ProspectNum as the ClientId for the visit
+                        "clientId": customer_name, 
                         "salesperson_id": salesperson_id,
                         "salesperson_name": sales_person_name,
-                        "success_message": success_message  # To show if they say "no"
+                        "success_message": success_message 
                     })]
                 })
-                # --- END MODIFICATION ---
 
             except OperationalError as e:
                 print("❌ Database timeout or connection error:", e)
@@ -2111,7 +2137,7 @@ def dialogflow_webhook():
             })
 
         elif intent == "ConfirmExistingCustomerActivity - yes":
-            from datetime import datetime
+            # from datetime import datetime
 
             clientId = get_param_from_contexts("clientId")
             activityType = get_param_from_contexts("activityType")
@@ -2144,7 +2170,7 @@ def dialogflow_webhook():
             sales_json = parse_sales_detail(raw_sales_detail)  # <-- dict
             print("DEBUG parsed sales_json:", sales_json, type(sales_json))
 
-            visit_datetime = datetime.now()
+            # visit_datetime = datetime.now()
             activity_map = {"ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
             activity_code = activity_map.get(activityType, activityType)
             resolved = (activity_code != "Problem")
@@ -2160,7 +2186,7 @@ def dialogflow_webhook():
                     Notes=activityNote,
                     ProblemNotes=problemNote,
                     Resolved=resolved,
-                    VisitDateTime=visit_datetime,
+                    # VisitDateTime=visit_datetime,
                     Sales=sales_json          # <-- pass dict directly
                 )
                 session.add(new_visit)
