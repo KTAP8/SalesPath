@@ -13,7 +13,11 @@ load_dotenv()  # ⬅️ Load from .env
 db = SQLAlchemy()# db.Model is the base class that all your ORM tables inherit from when you use Flask-SQLAlchemy 
 jwt = JWTManager() 
 
-frontend_url = "http://localhost:8081" #<-- Change this port
+# frontend_url = "http://localhost:8081" #<-- Change this port
+allowed_origins = [
+    "http://localhost:8081",           # Your local React/Frontend
+    "https://salespath-web.web.app"    # Your deployed Firebase/Frontend
+]
 
 def create_app():
     app = Flask(__name__)
@@ -36,7 +40,7 @@ def create_app():
 
     # **THIS IS WHERE YOU SET THE JWT ACCESS TOKEN EXPIRATION TIME**
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes = 15)
-    CORS(app, origins=[frontend_url])   # 🔌 Initialize DB
+    CORS(app, origins=[allowed_origins])   # 🔌 Initialize DB
     db.init_app(app)
 
     jwt.init_app(app)
