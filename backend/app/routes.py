@@ -470,7 +470,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from io import BytesIO
+from io import BytesIO, TextIOWrapper
 import calendar
 
 from reportlab.pdfbase import pdfmetrics
@@ -1432,19 +1432,32 @@ def export_sales_report_csv():
             final_rows.insert(0, section_titles)
             final_rows.insert(0, title_row)
 
-            # Write to CSV
-            output = StringIO()
-            writer = csv.writer(output)
+            # Write to CSV using BytesIO and utf-8-sig for BOM support in Excel
+            # 1. Use BytesIO for binary data
+            output = BytesIO()
+
+            # 2. Wrap BytesIO with TextIOWrapper using the 'utf-8-sig' encoding.
+            # 'utf-8-sig' adds the Byte Order Mark (BOM) which tells Excel
+            # to interpret the file as UTF-8.
+            writer = csv.writer(TextIOWrapper(
+                output, encoding='utf-8-sig', newline=''))
+
             for row in final_rows:
                 writer.writerow(row)
 
+            # Get the binary data from the BytesIO stream
             csv_data = output.getvalue()
             output.close()
 
+            # The response should be created from the binary data
             response = make_response(csv_data)
-            response.headers[
-                'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.csv'
-            # Important for Thai support in Excel
+
+            response.headers['Content-Disposition'] = (
+                f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.csv'
+            )
+            # Ensure the Content-Type header is for CSV and correctly specifies the charset
+            # This header is now less critical than the 'utf-8-sig' encoding itself,
+            # but it's good practice.
             response.headers['Content-Type'] = 'text/csv; charset=utf-8-sig'
             return response
 
@@ -1519,16 +1532,17 @@ def dialogflow_webhook():
                     LIMIT 1
                 """), {"sid": saleperson_id}).mappings().first()
                 return dict(res) if res else None
+
         def get_raw_user_text(req):
             # 1) Dialogflow raw text
             qtext = (req.get('queryResult', {}) or {}).get('queryText')
 
             # 2) LINE payload (Dialogflow v2)
             line_text = (req.get('originalDetectIntentRequest', {}) or {}) \
-                        .get('payload', {}) \
-                        .get('data', {}) \
-                        .get('message', {}) \
-                        .get('text')
+                .get('payload', {}) \
+                .get('data', {}) \
+                .get('message', {}) \
+                .get('text')
 
             return (line_text or qtext or "").strip()
 
@@ -1648,7 +1662,7 @@ def dialogflow_webhook():
         elif intent == "GetCustomerName":
             customer_name = req.get('queryResult', {}).get(
                 'parameters', {}).get('customer_name')
-            
+
             # 1. Get salesperson info from the incoming context
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
@@ -1663,7 +1677,7 @@ def dialogflow_webhook():
             # 3. Combine *all* params into one dictionary
             final_params = {
                 **next_context_params,  # Unpack sales info
-                "customer_name": customer_name # Add the new customer name
+                "customer_name": customer_name  # Add the new customer name
             }
             # --- END FIX ---
 
@@ -1676,7 +1690,7 @@ def dialogflow_webhook():
         elif intent == "GetCustomerCity":
             city = req.get('queryResult', {}).get('parameters', {}).get('city')
             customer_name = get_param_from_contexts('customer_name')
-            
+
             # 1. Get salesperson info
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
@@ -1702,7 +1716,7 @@ def dialogflow_webhook():
                 'parameters', {}).get('subregion')
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
-            
+
             # 1. Get salesperson info
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
@@ -1717,12 +1731,12 @@ def dialogflow_webhook():
                 "subregion": subregion
             }
             # --- END FIX ---
-            
+
             return jsonify({
                 'fulfillmentText': f"👤 ลูกค้า {customer_name}\n📍 จังหวัด {city}\n🗺️ เขต/อำเภอ {subregion}\nกรุณาระบุเบอร์โทรศัพท์ติดต่อของลูกค้าด้วยครับ (เฉพาะตัวเลข)",
                 # 3. Pass the single, merged dictionary
                 'outputContexts': [make_ctx("awaiting_customer_phone", 5, final_params)]
-        })
+            })
 
         elif intent == 'GetCustomerPhone':
             phone = req.get('queryResult', {}).get(
@@ -1732,14 +1746,14 @@ def dialogflow_webhook():
             customer_name = get_param_from_contexts('customer_name')
             city = get_param_from_contexts('city')
             subregion = get_param_from_contexts('subregion')
-            
+
             # 1. Get salesperson info from the incoming context
             salesperson_id = get_param_from_contexts("salesperson_id")
             salesperson_name = get_param_from_contexts("salesperson_name")
 
             # --- VALIDATION LOGIC ---
             if not phone or not phone.isdigit():
-                
+
                 # --- START FIX (Validation case) ---
                 # Combine *all* params into one dictionary to pass back
                 final_params_on_fail = {
@@ -1790,16 +1804,16 @@ def dialogflow_webhook():
 
         elif intent == "ConfirmNewCustomer":
             # from datetime import datetime  <-- We don't need this anymore
-    
+
             customer_name = get_param_from_contexts("customer_name")
             city = get_param_from_contexts("city")
             subregion = get_param_from_contexts("subregion")
-            phone = get_param_from_contexts("phone") 
+            phone = get_param_from_contexts("phone")
 
             sales_person_name = get_param_from_contexts(
                 "salesperson_name") or get_line_user_id()
             salesperson_id = get_param_from_contexts(
-                "salesperson_id")  
+                "salesperson_id")
 
             session = None
             try:
@@ -1811,10 +1825,10 @@ def dialogflow_webhook():
 
                 new_prospect = Prospect(
                     # ProspectNum is auto-generated
-                    ProspectId=customer_name,  
+                    ProspectId=customer_name,
                     ProspectReg=city,
                     ProspectSubReg=subregion,
-                    Phone=phone,  
+                    Phone=phone,
                     SalesName=sales_person_name
                     # ProspectDateTime is now set by the database by default
                 )
@@ -1835,10 +1849,10 @@ def dialogflow_webhook():
                 return jsonify({
                     'fulfillmentText': f"{success_message}\n\nคุณต้องการบันทึก 'การขาย' (Sale) สำหรับลูกค้านี้เลยหรือไม่? (ใช่ / ไม่ใช่)",
                     'outputContexts': [make_ctx("awaiting_add_sales_to_prospect", 2, {
-                        "clientId": customer_name, 
+                        "clientId": customer_name,
                         "salesperson_id": salesperson_id,
                         "salesperson_name": sales_person_name,
-                        "success_message": success_message 
+                        "success_message": success_message
                     })]
                 })
 
@@ -2063,7 +2077,8 @@ def dialogflow_webhook():
                     })]
                 })
 
-            bad_idx = next((i for i, ln in enumerate(lines) if not line_re.match(ln)), None)
+            bad_idx = next((i for i, ln in enumerate(lines)
+                           if not line_re.match(ln)), None)
             if bad_idx is not None:
                 bad_line = lines[bad_idx]
                 return jsonify({
@@ -2107,8 +2122,6 @@ def dialogflow_webhook():
                     "salesperson_name": get_param_from_contexts("salesperson_name")
                 })]
             })
-
-
 
         elif intent == "ProvideProblemNote":
             problem_note = req.get('queryResult', {}).get(
@@ -2171,10 +2184,12 @@ def dialogflow_webhook():
             print("DEBUG parsed sales_json:", sales_json, type(sales_json))
 
             # visit_datetime = datetime.now()
-            activity_map = {"ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
+            activity_map = {
+                "ขาย": "Sale", "ความสัมพันธ์ลูกค้า": "Relation", "แจ้งปัญหา": "Problem"}
             activity_code = activity_map.get(activityType, activityType)
             resolved = (activity_code != "Problem")
-            sales_person_name = get_param_from_contexts("salesperson_name") or get_line_user_id()
+            sales_person_name = get_param_from_contexts(
+                "salesperson_name") or get_line_user_id()
 
             try:
                 session = Session(db.get_engine(current_app, bind='touchdb'))
@@ -2192,7 +2207,8 @@ def dialogflow_webhook():
                 session.add(new_visit)
                 session.commit()
 
-                print("DEBUG stored Sales type:", type(new_visit.Sales), new_visit.Sales)
+                print("DEBUG stored Sales type:", type(
+                    new_visit.Sales), new_visit.Sales)
 
                 saved_visit_id = new_visit.VisitId
                 session.close()
@@ -2211,8 +2227,6 @@ def dialogflow_webhook():
                 import traceback
                 traceback.print_exc()
                 return jsonify({'fulfillmentText': "❌ ระบบเกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง"})
-
-
 
         elif intent == "ConfirmExistingCustomerActivity - no":
             return jsonify({

@@ -10,14 +10,15 @@ from flask_jwt_extended import (
 
 load_dotenv()  # ⬅️ Load from .env
 
-db = SQLAlchemy()# db.Model is the base class that all your ORM tables inherit from when you use Flask-SQLAlchemy 
-jwt = JWTManager() 
+db = SQLAlchemy()  # db.Model is the base class that all your ORM tables inherit from when you use Flask-SQLAlchemy
+jwt = JWTManager()
 
 # frontend_url = "http://localhost:8081" #<-- Change this port
 allowed_origins = [
     "http://localhost:8081",           # Your local React/Frontend
     "https://salespath-web.web.app"    # Your deployed Firebase/Frontend
 ]
+
 
 def create_app():
     app = Flask(__name__)
@@ -36,11 +37,13 @@ def create_app():
     # --- JWT Configuration ---
     # You should use a strong, random secret key in a production environment
     # For example, generate with: import secrets; secrets.token_hex(32)
-    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "super-secret-jwt-key")
+    app.config["JWT_SECRET_KEY"] = os.getenv(
+        "JWT_SECRET_KEY", "super-secret-jwt-key")
 
     # **THIS IS WHERE YOU SET THE JWT ACCESS TOKEN EXPIRATION TIME**
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes = 15)
-    CORS(app, origins=[allowed_origins])   # 🔌 Initialize DB
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
+    CORS(app, origins=allowed_origins,
+         supports_credentials=True)   # 🔌 Initialize DB
     db.init_app(app)
 
     jwt.init_app(app)
