@@ -35,7 +35,7 @@ type RevenueStats = {
 export default function DashboardScreen() {
   const [clientStats, setClientStats] = useState<ClientStats[]>([]);
   const [revenueStats, setRevenueStats] = useState<RevenueStats[]>([]);
-  const {token} = useContext(AuthContext)
+  const { token } = useContext(AuthContext);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedSalesName, setSelectedSalesName] = useState<string | null>(
     null
@@ -44,34 +44,45 @@ export default function DashboardScreen() {
     new Date().toISOString().split("T")[0]
   );
   const [showPicker, setShowPicker] = useState(false);
+  // Helper to format date to YYYY-MM-DD (keeping your existing format logic)
+  const formatDate = (date: any) => date.toISOString().split("T")[0];
+  const [startDate, setStartDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  });
 
   useEffect(() => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString()
-      .split("T")[0];
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      .toISOString()
-      .split("T")[0];
+    // Guard clause
+    if (!startDate || !endDate) return;
 
+    // 2. Convert state dates to strings for the API
+    const startStr = formatDate(startDate);
+    const endStr = formatDate(endDate);
+
+    // 3. Fetch Client Stats
     axios
-      .get(`${API_URL}/api/clients-per-salesman?from=${firstDay}&to=${lastDay}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+      .get(
+        `${API_URL}/api/clients-per-salesman?from=${startStr}&to=${endStr}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
         }
-      })
+      )
       .then((res) => setClientStats(res.data))
       .catch((err) => console.error("Clients error:", err));
 
+    // 4. Fetch Revenue Stats
     axios
-      .get(`${API_URL}/api/revenue?from=${firstDay}&to=${lastDay}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      .get(`${API_URL}/api/revenue?from=${startStr}&to=${endStr}`, {
+        headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => setRevenueStats(res.data))
       .catch((err) => console.error("Revenue error:", err));
-  }, [token]);
+  }, [token, startDate, endDate]); // <--- Re-runs whenever user changes start or end date
 
   const handleGeneratePDF = async () => {
     const selectedSales = clientStats.find(
@@ -171,6 +182,28 @@ export default function DashboardScreen() {
               Generate Sales Report
             </Text>
           </Pressable>
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 20,
+            alignItems: "center",
+            zIndex: 999,
+            paddingBottom: 30,
+          }}
+        >
+          <DatePickerInput
+            label="Start Date"
+            value={startDate.toISOString().split("T")[0]}
+            setValue={(val) => setStartDate(new Date(val))}
+          />
+
+          {/* End Date Picker */}
+          <DatePickerInput
+            label="End Date"
+            value={endDate.toISOString().split("T")[0]}
+            setValue={(val) => setEndDate(new Date(val))}
+          />
         </View>
 
         {/* Overview counters */}
