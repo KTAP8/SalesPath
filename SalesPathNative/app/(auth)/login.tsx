@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator, // Import ActivityIndicator
 } from "react-native";
 import { Redirect, router } from "expo-router";
 import { AuthContext } from "@/contexts/authContext";
@@ -34,12 +35,14 @@ export default function LoginScreen() {
   const [showModal, setShowModal] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalDescription, setModalDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false); // Add isLoading state
 
 
   const handleLogin = async (
     values: LoginFormValues,
     { setSubmitting, setErrors }: FormikHelpers<LoginFormValues>
   ) => {
+    setIsLoading(true); // Start loading
     try {
       await login(values.email, values.password);
       router.replace("/");
@@ -53,6 +56,7 @@ export default function LoginScreen() {
       setShowModal(true);
     } finally {
       setSubmitting(false);
+      setIsLoading(false); // End loading
     }
   };
   
@@ -121,9 +125,13 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={styles.button}
               onPress={() => handleSubmit()}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoading} // Disable button when submitting or loading
             >
-              <Text style={styles.buttonText}>Log In</Text>
+              {isLoading ? (
+                <ActivityIndicator color="#fff" /> // Show loader when isLoading is true
+              ) : (
+                <Text style={styles.buttonText}>Log In</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.title} onPress={() => router.replace('/(auth)/signup')}>
