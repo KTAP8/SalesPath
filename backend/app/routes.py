@@ -1060,17 +1060,23 @@ def generate_sales_report():
     try:
         # Get parameters from query string
         salesman_id = request.args.get('salesman_id', type=int)
-        month_str = request.args.get('month')  # Expected format: YYYY-MM
+        # month_str = request.args.get('month')  # Expected format: YYYY-MM
+        start_date_str = request.args.get('start_date')  # Expected: YYYY-MM-DD
+        end_date_str = request.args.get('end_date')      # Expected: YYYY-MM-DD
 
-        if not salesman_id or not month_str:
-            return jsonify({"error": "salesman_id and month (YYYY-MM) are required"}), 400
-
+        if not salesman_id or not start_date_str or not end_date_str:
+            return jsonify({"error": "salesman_id, start_date, and end_date are required"}), 400
         try:
-            year, month = map(int, month_str.split('-'))
-            if not (1 <= month <= 12):
-                raise ValueError
+            # 2. Parse dates
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            # Set end_date to the very end of that day (23:59:59)
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            
+            if start_date > end_date:
+                 return jsonify({"error": "start_date cannot be after end_date"}), 400
+                 
         except ValueError:
-            return jsonify({"error": "Invalid month format. Use YYYY-MM"}), 400
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
         # Initialize sessions
         touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
@@ -1084,9 +1090,9 @@ def generate_sales_report():
                 return jsonify({"error": "Salesman not found"}), 404
 
             # Calculate date range for the month
-            _, last_day = calendar.monthrange(year, month)
-            start_date = datetime(year, month, 1)
-            end_date = datetime(year, month, last_day, 23, 59, 59)
+            # _, last_day = calendar.monthrange(year, month)
+            # start_date = datetime(year, month, 1)
+            # end_date = datetime(year, month, last_day, 23, 59, 59)
 
             print(start_date, end_date)
 
@@ -1156,7 +1162,7 @@ def generate_sales_report():
 
             # Title
             elements.append(Paragraph(
-                f"รายงานยอดขาย {salesman.SalesName} - {year}-{month:02d}", styles['ThaiTitle']
+                f"รายงานยอดขาย {salesman.SalesName} <br/> {start_date_str} ถึง {end_date_str}", styles['ThaiTitle']
             ))
 
             elements.append(Spacer(1, 12))
@@ -1282,7 +1288,7 @@ def generate_sales_report():
             response = make_response(pdf)
             response.headers['Content-Type'] = 'application/pdf'
             response.headers[
-                'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.pdf'
+                'Content-Disposition'] = f'attachment; filename=sales_report_{salesman_id}_{start_date_str}_to_{end_date_str}.pdf'
             return response
 
         finally:
@@ -1299,17 +1305,21 @@ def generate_sales_report():
 def export_sales_report_csv():
     try:
         salesman_id = request.args.get('salesman_id', type=int)
-        month_str = request.args.get('month')
-
-        if not salesman_id or not month_str:
-            return jsonify({"error": "salesman_id and month (YYYY-MM) are required"}), 400
+        start_date_str = request.args.get('start_date')  # Expected: YYYY-MM-DD
+        end_date_str = request.args.get('end_date')      # Expected: YYYY-MM-DD
+        if not salesman_id or not start_date_str or not end_date_str:
+            return jsonify({"error": "salesman_id, start_date, and end_date are required"}), 400
 
         try:
-            year, month = map(int, month_str.split('-'))
-            if not (1 <= month <= 12):
-                raise ValueError
+            # 2. Parse dates
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            
+            if start_date > end_date:
+                 return jsonify({"error": "start_date cannot be after end_date"}), 400
+                 
         except ValueError:
-            return jsonify({"error": "Invalid month format. Use YYYY-MM"}), 400
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
         touchdb_session = Session(db.get_engine(current_app, bind='touchdb'))
         chaluck_session = Session(db.get_engine(current_app, bind='chaluck'))
@@ -1320,9 +1330,9 @@ def export_sales_report_csv():
             if not salesman:
                 return jsonify({"error": "Salesman not found"}), 404
 
-            _, last_day = calendar.monthrange(year, month)
-            start_date = datetime(year, month, 1)
-            end_date = datetime(year, month, last_day, 23, 59, 59)
+            # _, last_day = calendar.monthrange(year, month)
+            # start_date = datetime(year, month, 1)
+            # end_date = datetime(year, month, last_day, 23, 59, 59)
 
             # Query 1: Total clients visited
             visits = touchdb_session.query(Visit).filter(
@@ -1422,7 +1432,7 @@ def export_sales_report_csv():
                 )
 
             # Add the two rows above
-            title_row = [f"{year}-{month:02d}_{salesman_id}_report"]
+            title_row = [f"{start_date_str}_to_{end_date_str}_{salesman_id}_report"]
             section_titles = (
                 ["Summary", ""] + [""] +
                 ["No Sales"] + [""] * 3 +
@@ -1453,7 +1463,7 @@ def export_sales_report_csv():
             response = make_response(csv_data)
 
             response.headers['Content-Disposition'] = (
-                f'attachment; filename=sales_report_{salesman_id}_{year}_{month:02d}.csv'
+                f'attachment; filename=sales_report_{salesman_id}_{start_date_str}_to_{end_date_str}.csv'
             )
             # Ensure the Content-Type header is for CSV and correctly specifies the charset
             # This header is now less critical than the 'utf-8-sig' encoding itself,

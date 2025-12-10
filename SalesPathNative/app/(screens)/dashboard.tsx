@@ -56,6 +56,14 @@ export default function DashboardScreen() {
     return new Date(now.getFullYear(), now.getMonth() + 1, 0);
   });
 
+  // Add these to your state definitions
+  const [startDateReport, setStartDateReport] = useState(
+    new Date().toISOString().split("T")[0]
+  ); // Default to today
+  const [endDateReport, setEndDateReport] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+
   useEffect(() => {
     // Guard clause
     if (!startDate || !endDate) return;
@@ -90,20 +98,25 @@ export default function DashboardScreen() {
     );
     if (!selectedSales) return alert("Please select a salesman");
 
-    const [year, month] = selectedMonth.split("-");
+    // Updated check with new variable names
+    if (!startDateReport || !endDateReport)
+      return alert("Please select a start and end date");
 
-    const url = `${API_URL}/api/sales-report?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+    // Updated URL and filename using startDateReport / endDateReport
+    const url = `${API_URL}/api/sales-report?salesman_id=${selectedSales.SalesId}&start_date=${startDateReport}&end_date=${endDateReport}`;
 
     try {
       const response = await axios.get(url, { responseType: "blob" });
+      const filename = `sales_report_${startDateReport}_to_${endDateReport}.pdf`;
+
       if (Platform.OS === "web") {
         const blob = new Blob([response.data], { type: "application/pdf" });
         const link = document.createElement("a");
         link.href = window.URL.createObjectURL(blob);
-        link.download = `sales_report_${year}_${month}.pdf`;
+        link.download = filename;
         link.click();
       } else {
-        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.pdf`;
+        const path = `${FileSystem.documentDirectory}${filename}`;
         await FileSystem.writeAsStringAsync(path, response.data, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -121,12 +134,16 @@ export default function DashboardScreen() {
     );
     if (!selectedSales) return alert("Please select a salesman");
 
-    const [year, month] = selectedMonth.split("-");
+    // Updated check
+    if (!startDateReport || !endDateReport)
+      return alert("Please select a start and end date");
 
-    const url = `${API_URL}/api/sales-report-csv?salesman_id=${selectedSales.SalesId}&month=${year}-${month}`;
+    // Updated URL
+    const url = `${API_URL}/api/sales-report-csv?salesman_id=${selectedSales.SalesId}&start_date=${startDateReport}&end_date=${endDateReport}`;
 
     try {
       const response = await axios.get(url, { responseType: "blob" });
+      const filename = `sales_report_${startDateReport}_to_${endDateReport}.csv`;
 
       if (Platform.OS === "web") {
         const blob = new Blob([response.data], {
@@ -134,11 +151,11 @@ export default function DashboardScreen() {
         });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = `sales_report_${year}_${month}.csv`;
+        link.download = filename;
         link.click();
       } else {
-        const base64Data = await response.data.text(); // Convert blob to string
-        const path = `${FileSystem.documentDirectory}sales_report_${year}_${month}.csv`;
+        const base64Data = await response.data.text();
+        const path = `${FileSystem.documentDirectory}${filename}`;
         await FileSystem.writeAsStringAsync(path, base64Data, {
           encoding: FileSystem.EncodingType.UTF8,
         });
@@ -272,7 +289,7 @@ export default function DashboardScreen() {
                   fontFamily: "Lexend",
                 }}
               >
-                Generate PDF Report
+                Generate Report
               </Text>
               <View style={{ gap: 30 }}>
                 <View style={{ gap: 10 }}>
@@ -288,11 +305,22 @@ export default function DashboardScreen() {
                   />
                 </View>
 
-                <DatePickerInput
-                  label="Select Month"
-                  value={selectedMonth}
-                  setValue={setSelectedMonth}
-                />
+                <View style={{ flexDirection: "row", gap: 20 }}>
+                  <View style={{ flex: 1 }}>
+                    <DatePickerInput
+                      label="Start Date"
+                      value={startDateReport}
+                      setValue={setStartDateReport}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <DatePickerInput
+                      label="End Date"
+                      value={endDateReport}
+                      setValue={setEndDateReport}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
             <View
