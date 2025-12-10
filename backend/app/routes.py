@@ -864,7 +864,7 @@ def get_salesman_revenue():
                 }
 
             revenue_summary[sales_id]["TotalRevenue"] += float(
-                invoice.Amount or 0)
+                invoice.Amount / Decimal("1.07") or 0)
             revenue_summary[sales_id]["ClientIds"].add(invoice.ClientId)
 
         session.close()
